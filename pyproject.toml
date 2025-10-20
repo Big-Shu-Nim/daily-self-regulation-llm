@@ -1,0 +1,207 @@
+[tool.poetry]
+name = "daily-self-regulation"
+version = "0.1.0"
+description  = ""
+authors = ["eddie"]
+license = "x"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "~3.11"
+zenml = { version = "0.74.0", extras = ["server"] }
+pymongo = "^4.6.2"
+click = "^8.0.1"
+loguru = "^0.7.2"
+rich = "^13.7.1"
+numpy = "^1.26.4"
+poethepoet = "0.29.0"
+datasets = "^3.0.1"
+torch = "2.2.2"
+
+# Digital data ETL
+selenium = "^4.21.0"
+webdriver-manager = "^4.0.1"
+beautifulsoup4 = "^4.12.3"
+html2text = "^2024.2.26"
+jmespath = "^1.0.1"
+chromedriver-autoinstaller = "^0.6.4"
+notion-client = "^2.5.0"
+
+# Feature engineering
+qdrant-client = "^1.8.0"
+langchain = "^0.2.11"
+sentence-transformers = "^3.0.0"
+
+# RAG
+langchain-openai = "^0.1.3"
+jinja2 = "^3.1.4"
+tiktoken = "^0.7.0"
+fake-useragent = "^1.5.1"
+langchain-community = "^0.2.11"
+
+# Inference
+fastapi = ">=0.100,<=0.110"
+uvicorn = "^0.30.6"
+opik = "^0.2.2"
+openpyxl = "^3.1.5"
+python-dotenv = "^1.1.1"
+pandas = "^2.3.3"
+google-generativeai = "^0.8.5"
+
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.4.9"
+pre-commit = "^3.7.1"
+pytest = "^8.2.2"
+
+
+[tool.poetry.group.aws.dependencies]
+sagemaker = ">=2.232.2"
+s3fs = ">2022.3.0"
+aws-profile-manager = "^0.7.3"
+kubernetes = "^30.1.0"
+sagemaker-huggingface-inference-toolkit = "^2.4.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# ----------------------------------
+# --- Poe the Poet Configuration ---
+# ----------------------------------
+
+[tool.poe.tasks]
+# Crawlers
+[tool.poe.tasks.crawl-naver]
+help = "Run the Naver crawler. e.g. poe crawl-naver --first-name Eddie --last-name Yun -- --blog-id 'my-id'"
+cmd = "poetry run python -m tools.run_crawler --name naver --user-first-name $first_name --user-last-name $last_name"
+args = [
+    {name = "first_name", options = ["--first-name"], help = "User's first name"},
+    {name = "last_name", options = ["--last-name"], help = "User's last name"},
+]
+
+[tool.poe.tasks.crawl-calendar]
+help = "Run the Calendar crawler. e.g. poe crawl-calendar --first-name Eddie --last-name Yun"
+cmd = "poetry run python -m tools.run_crawler --name calendar --user-first-name $first_name --user-last-name $last_name --directory-path 'llm_engineering/application/crawlers/data'"
+args = [
+    {name = "first_name", options = ["--first-name"], help = "User's first name"},
+    {name = "last_name", options = ["--last-name"], help = "User's last name"},
+]
+
+[tool.poe.tasks.crawl-notion]
+help = "Run the Notion crawler. e.g. poe crawl-notion --first-name Eddie --last-name Yun"
+cmd = "poetry run python -m tools.run_crawler --name notion --user-first-name $first_name --user-last-name $last_name"
+args = [
+    {name = "first_name", options = ["--first-name"], help = "User's first name"},
+    {name = "last_name", options = ["--last-name"], help = "User's last name"},
+]
+
+
+
+[tool.poe.tasks.local-docker-infrastructure-up]
+cmd = "docker compose up -d"
+
+[tool.poe.tasks.local-docker-infrastructure-down]
+cmd = "docker compose stop"
+
+[tool.poe.tasks.local-zenml-server-down]
+cmd = "poetry run zenml logout --local"
+
+[tool.poe.tasks.local-infrastructure-up]
+sequence = [
+    "local-docker-infrastructure-up",
+    "local-zenml-server-down",
+    "local-zenml-server-up",
+]
+
+[tool.poe.tasks.local-infrastructure-down]
+sequence = [
+    "local-docker-infrastructure-down",
+    "local-zenml-server-down",
+]
+
+[tool.poe.tasks.set-local-stack]
+cmd = "poetry run zenml stack set default"
+
+[tool.poe.tasks.set-aws-stack]
+cmd = "poetry run zenml stack set aws-stack"
+
+[tool.poe.tasks.set-asynchronous-runs]
+cmd = "poetry run zenml orchestrator update aws-stack --synchronous=False"
+
+[tool.poe.tasks.zenml-server-disconnect]
+cmd = "poetry run zenml disconnect"
+
+## Settings
+[tool.poe.tasks.export-settings-to-zenml]
+cmd = "poetry run python -m tools.run --export-settings"
+
+[tool.poe.tasks.delete-settings-zenml]
+cmd = "poetry run zenml secret delete settings"
+
+## SageMaker
+[tool.poe.tasks.create-sagemaker-role]
+cmd = "poetry run python -m llm_engineering.infrastructure.aws.roles.create_sagemaker_role"
+
+[tool.poe.tasks.create-sagemaker-execution-role]
+cmd = "poetry run python -m llm_engineering.infrastructure.aws.roles.create_execution_role"
+
+[tool.poe.tasks.deploy-inference-endpoint]
+cmd = "poetry run python -m llm_engineering.infrastructure.aws.deploy.huggingface.run"
+
+[tool.poe.tasks.test-sagemaker-endpoint]
+cmd = "poetry run python -m llm_engineering.model.inference.test"
+
+[tool.poe.tasks.delete-inference-endpoint]
+cmd = "poetry run python -m llm_engineering.infrastructure.aws.deploy.delete_sagemaker_endpoint"
+
+## Docker
+[tool.poe.tasks.build-docker-image]
+cmd = "docker buildx build --platform linux/amd64 -t llmtwin -f Dockerfile ."
+
+[tool.poe.tasks.run-docker-end-to-end-data-pipeline]
+cmd = "docker run --rm --network host --shm-size=2g --env-file .env llmtwin poetry poe --no-cache --run-end-to-end-data"
+
+[tool.poe.tasks.bash-docker-container]
+cmd = "docker run --rm -it --network host --env-file .env llmtwin bash"
+
+# QA
+[tool.poe.tasks.lint-check]
+cmd = "poetry run ruff check ."
+
+[tool.poe.tasks.format-check]
+cmd = "poetry run ruff format --check ."
+
+[tool.poe.tasks.lint-check-docker]
+cmd = "sh -c 'docker run --rm -i hadolint/hadolint < Dockerfile'"
+
+[tool.poe.tasks.gitleaks-check]
+cmd = "docker run -v .:/src zricethezav/gitleaks:latest dir /src/llm_engineering"
+
+[tool.poe.tasks.lint-fix]
+cmd = "poetry run ruff check --fix ."
+
+[tool.poe.tasks.format-fix]
+cmd = "poetry run ruff format ."
+
+[tool.poe.tasks.local-zenml-server-up]
+control.expr = "sys.platform"
+
+[[tool.poe.tasks.local-zenml-server-up.switch]]
+case = "darwin"
+env = { OBJC_DISABLE_INITIALIZE_FORK_SAFETY = "YES" }
+cmd = "poetry run zenml login --local"
+
+[[tool.poe.tasks.local-zenml-server-up.switch]]
+case = "win32"
+cmd = "poetry run zenml login --local --blocking"
+
+[[tool.poe.tasks.local-zenml-server-up.switch]]
+cmd = "poetry run zenml login --local"
+
+# Tests
+[tool.poe.tasks.test]
+cmd = "poetry run pytest tests/"
+env = { ENV_FILE = ".env.testing" }
