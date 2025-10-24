@@ -5,9 +5,7 @@ from enum import Enum
 
 
 class DataCategory(str, Enum):
-    POSTS = "posts"
-    ARTICLES = "articles"
-    REPOSITORIES = "repositories"
+ 
     QUERIES = "queries"
     NAVER_POSTS = "naver_posts"
     NOTION_PAGES = "notion_pages"

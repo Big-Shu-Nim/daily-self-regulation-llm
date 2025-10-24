@@ -26,27 +26,7 @@ class Document(NoSQLBaseDocument, ABC):
     author_full_name: str = Field(alias="author_full_name")
 
 
-class RepositoryDocument(Document):
-    name: str
-    link: str
 
-    class Settings:
-        name = DataCategory.REPOSITORIES
-
-
-class PostDocument(Document):
-    image: Optional[str] = None
-    link: str | None = None
-
-    class Settings:
-        name = DataCategory.POSTS
-
-
-class ArticleDocument(Document):
-    link: str
-
-    class Settings:
-        name = DataCategory.ARTICLES
 
 class NaverPostDocument(Document):
     content: dict
@@ -56,7 +36,7 @@ class NaverPostDocument(Document):
     published_at: str
     platform: str = "naver_blog"
     class Settings:
-        name = "naver_posts"
+        name = DataCategory.NAVER_POSTS 
 
         
 class NotionPageDocument(Document):
@@ -68,6 +48,7 @@ class NotionPageDocument(Document):
     ancestors: list = Field(default_factory=list)
     children: list = Field(default_factory=list)
     grandchildren: list = Field(default_factory=list)
+    image_gridfs_ids: list[str] | None = None
     notion_page_id: str
     url: str
     last_edited_time: datetime
@@ -75,7 +56,7 @@ class NotionPageDocument(Document):
     platform: str = "notion"
 
     class Settings:
-        name = "notion_pages"
+        name = DataCategory.NOTION_PAGES
         
 class ProcessedFileDocument(NoSQLBaseDocument):
     """
@@ -102,9 +83,75 @@ class CalendarDocument(Document):
     end_datetime: datetime
     calendar_name: str
     duration_minutes: int
-    # event_notes 필드는 이제 content 안으로 들어가므로 제거합니다.
     
+
     platform: str | None = "icloud_calendar"
 
     class Settings:
-        name = "calendar"
+        name = DataCategory.CALENDAR
+
+
+class DailySummaryDocument(NoSQLBaseDocument):
+    """
+    일일 요약 Document (Gemini로 생성된 요약)
+    """
+    ref_date: str  # YYYY-MM-DD
+    author_id: UUID4
+    author_full_name: str
+
+    # Gemini 생성 요약
+    summary: str
+
+    # 생성 시간
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # 요약 생성에 사용된 데이터 참조
+    source_calendar_count: int = 0
+    source_diary_count: int = 0
+    source_naver_count: int = 0
+
+    class Settings:
+        name = "daily_summaries"
+
+
+class DailyTimelineDocument(NoSQLBaseDocument):
+    """
+    일일 타임라인 통합 Document (대시보드용 캐시)
+
+    원본 데이터는 각 Collection에 유지하고,
+    이 Document는 빠른 조회를 위한 집계 뷰 역할
+    """
+    ref_date: str  # YYYY-MM-DD
+    author_id: UUID4
+    author_full_name: str
+
+    # 원본 데이터 참조 (ID만 저장)
+    calendar_event_ids: list[str] = Field(default_factory=list)
+    notion_page_ids: list[str] = Field(default_factory=list)
+    naver_post_ids: list[str] = Field(default_factory=list)
+
+    # 집계 데이터 (캐시)
+    total_events: int = 0
+    total_duration_minutes: int = 0
+
+    # Mode별 시간 (분 단위)
+    time_by_mode: dict = Field(default_factory=dict)
+    # {"Creator Mode": 120, "Learner Mode": 180, ...}
+
+    # Category별 시간 (분 단위)
+    time_by_category: dict = Field(default_factory=dict)
+    # {"학습/성장": 180, "수면": 420, ...}
+
+    # 활성 프로젝트 목록
+    active_projects: list[str] = Field(default_factory=list)
+    # ["장비 세팅", "MCP 학습", ...]
+
+    # 일일 요약 ID 참조
+    summary_id: UUID4 | None = None
+
+    # 메타 정보
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "daily_timelines"
