@@ -8,6 +8,7 @@ import re
 
 from llm_engineering.domain.documents import NotionPageDocument, UserDocument
 from llm_engineering.settings import settings
+from llm_engineering.infrastructure.image_store import ImageStore
 from .base import BaseCrawler
 
 
@@ -130,6 +131,10 @@ class NotionCrawler(BaseCrawler):
             return "- " + self._rich_to_text(b.get("rich_text")) + "\n"
         if t == "numbered_list_item":
             return "1. " + self._rich_to_text(b.get("rich_text")) + "\n"
+        if t == "callout":
+            icon = b.get("icon", {}).get("emoji", "")
+            text = self._rich_to_text(b.get("rich_text"))
+            return f"{icon} {text}\n"
         if t == "quote":
             return "> " + self._rich_to_text(b.get("rich_text")) + "\n"
         if t == "code":
@@ -177,6 +182,21 @@ class NotionCrawler(BaseCrawler):
             ancestors = self._get_ancestor_titles(full_page_obj)
             blocks = self._get_block_children(page_id)
             
+            # Extract image URLs from blocks
+            image_urls = []
+            for block in blocks:
+                if block.get("type") == "image":
+                    image_block = block.get("image", {})
+                    image_type = image_block.get("type")
+                    url = None
+                    if image_type == "external":
+                        url = image_block.get("external", {}).get("url")
+                    elif image_type == "file":
+                        url = image_block.get("file", {}).get("url")
+                    
+                    if url:
+                        image_urls.append(url)
+
             content = "".join(self._render_block(b) for b in blocks if self._render_block(b))
             
             hierarchy = self._extract_child_titles(blocks)
@@ -184,11 +204,12 @@ class NotionCrawler(BaseCrawler):
             last_edited_time_dt = datetime.fromisoformat(page.get("last_edited_time"))
             created_time_dt = datetime.fromisoformat(page.get("created_time"))
 
-            return self.model(
+            doc = self.model(
                 notion_page_id=page_id,
                 url=page.get("url", ""),
                 title=page_title,
                 content=content,
+                image_gridfs_ids=image_urls,  # Initially store URLs
                 ancestors=ancestors,
                 children=hierarchy["children"],
                 grandchildren=hierarchy["grandchildren"],
@@ -197,6 +218,21 @@ class NotionCrawler(BaseCrawler):
                 author_id=user.id,
                 author_full_name=user.full_name,
             )
+
+            # If images were found, process them and replace URLs with GridFS IDs
+            if doc.image_gridfs_ids:
+                logger.info(f"Found {len(doc.image_gridfs_ids)} images in page '{doc.title}'. Processing...")
+                image_store = ImageStore()
+                gridfs_ids = []
+                for i, img_url in enumerate(doc.image_gridfs_ids):
+                    filename = f"{doc.notion_page_id}_{i}.jpg"
+                    file_id = image_store.save_image_from_url(img_url, filename=filename)
+                    if file_id:
+                        gridfs_ids.append(str(file_id))
+                doc.image_gridfs_ids = gridfs_ids
+            
+            return doc
+
         except Exception as e:
             logger.exception(f"Failed to parse Notion page (ID: {page.get('id')}): {e}")
             return None
