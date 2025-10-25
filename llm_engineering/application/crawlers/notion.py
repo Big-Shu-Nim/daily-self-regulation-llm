@@ -4,7 +4,6 @@ from loguru import logger
 import notion_client
 from datetime import datetime, timezone # timezone을 import 합니다.
 import requests
-import re
 
 from llm_engineering.domain.documents import NotionPageDocument, UserDocument
 from llm_engineering.settings import settings
@@ -63,6 +62,146 @@ class NotionCrawler(BaseCrawler):
     def _rich_to_text(self, rich: list) -> str:
         return "".join(x.get("plain_text", "") for x in (rich or []))
 
+    def _extract_property_value(self, prop: dict, resolve_relations: bool = True) -> any:
+        """
+        Property 타입에 따라 값을 추출
+
+        Args:
+            prop: Property 데이터
+            resolve_relations: True이면 relation의 실제 제목을 조회 (API 호출 발생)
+        """
+        prop_type = prop.get("type")
+
+        if prop_type == "title":
+            return self._rich_to_text(prop.get("title", []))
+
+        elif prop_type == "rich_text":
+            return self._rich_to_text(prop.get("rich_text", []))
+
+        elif prop_type == "number":
+            return prop.get("number")
+
+        elif prop_type == "select":
+            select = prop.get("select")
+            return select.get("name") if select else None
+
+        elif prop_type == "multi_select":
+            return [item.get("name") for item in prop.get("multi_select", [])]
+
+        elif prop_type == "date":
+            date_obj = prop.get("date")
+            if date_obj:
+                return {
+                    "start": date_obj.get("start"),
+                    "end": date_obj.get("end"),
+                    "time_zone": date_obj.get("time_zone")
+                }
+            return None
+
+        elif prop_type == "people":
+            return [person.get("name") for person in prop.get("people", [])]
+
+        elif prop_type == "files":
+            files = []
+            for file in prop.get("files", []):
+                if file.get("type") == "file":
+                    files.append(file.get("file", {}).get("url"))
+                elif file.get("type") == "external":
+                    files.append(file.get("external", {}).get("url"))
+            return files
+
+        elif prop_type == "checkbox":
+            return prop.get("checkbox")
+
+        elif prop_type == "url":
+            return prop.get("url")
+
+        elif prop_type == "email":
+            return prop.get("email")
+
+        elif prop_type == "phone_number":
+            return prop.get("phone_number")
+
+        elif prop_type == "formula":
+            formula = prop.get("formula", {})
+            formula_type = formula.get("type")
+            if formula_type:
+                return formula.get(formula_type)
+            return None
+
+        elif prop_type == "relation":
+            relation_ids = [rel.get("id") for rel in prop.get("relation", [])]
+
+            # resolve_relations=True이면 실제 제목 조회
+            if resolve_relations and relation_ids:
+                relation_titles = []
+                for rel_id in relation_ids:
+                    try:
+                        rel_page = self._get_page(rel_id)
+                        rel_title = self._get_page_title(rel_page)
+                        relation_titles.append({
+                            "id": rel_id,
+                            "title": rel_title
+                        })
+                    except requests.HTTPError:
+                        # 접근 권한이 없거나 삭제된 페이지
+                        relation_titles.append({
+                            "id": rel_id,
+                            "title": "(inaccessible)"
+                        })
+                return relation_titles
+
+            # 기본적으로는 ID만 반환
+            return relation_ids
+
+        elif prop_type == "rollup":
+            rollup = prop.get("rollup", {})
+            rollup_type = rollup.get("type")
+            if rollup_type:
+                return rollup.get(rollup_type)
+            return None
+
+        elif prop_type == "created_time":
+            return prop.get("created_time")
+
+        elif prop_type == "created_by":
+            created_by = prop.get("created_by", {})
+            return created_by.get("name") if created_by else None
+
+        elif prop_type == "last_edited_time":
+            return prop.get("last_edited_time")
+
+        elif prop_type == "last_edited_by":
+            edited_by = prop.get("last_edited_by", {})
+            return edited_by.get("name") if edited_by else None
+
+        elif prop_type == "status":
+            status = prop.get("status")
+            return status.get("name") if status else None
+
+        else:
+            # 알 수 없는 타입은 None 반환 (button 등)
+            return None
+
+    def _extract_page_properties(self, page: dict, resolve_relations: bool = True) -> dict:
+        """
+        페이지의 모든 properties를 추출하여 딕셔너리로 반환
+
+        Args:
+            page: Notion 페이지 객체
+            resolve_relations: True이면 relation property의 실제 제목을 조회
+        """
+        properties = {}
+        for prop_name, prop_data in page.get("properties", {}).items():
+            prop_value = self._extract_property_value(prop_data, resolve_relations=resolve_relations)
+            # None이 아닌 값만 저장 (button 등 불필요한 property 제외)
+            if prop_value is not None:
+                properties[prop_name] = {
+                    "type": prop_data.get("type"),
+                    "value": prop_value
+                }
+        return properties
+
     def _get_page_title(self, page: dict) -> str:
         for _, prop in page.get("properties", {}).items():
             if prop.get("type") == "title":
@@ -117,7 +256,8 @@ class NotionCrawler(BaseCrawler):
         """Convert a Notion block to a markdown string"""
         t = block.get("type")
         b = block.get(t, {})
-        if not b: return ""
+        if not b:
+            return ""
 
         if t == "paragraph":
             return self._rich_to_text(b.get("rich_text")) + "\n"
@@ -170,7 +310,7 @@ class NotionCrawler(BaseCrawler):
         """Helper function to parse a Notion API page object into our document model."""
         try:
             page_id = page["id"]
-            
+
             # Re-fetch the full page object to ensure all properties are present
             full_page_obj = self._get_page(page_id)
 
@@ -179,9 +319,12 @@ class NotionCrawler(BaseCrawler):
                 logger.warning(f"Page (ID: {page_id}) has no title. Skipping.")
                 return None
 
+            # Extract properties (with relation titles resolved)
+            properties = self._extract_page_properties(full_page_obj, resolve_relations=True)
+
             ancestors = self._get_ancestor_titles(full_page_obj)
             blocks = self._get_block_children(page_id)
-            
+
             # Extract image URLs from blocks
             image_urls = []
             for block in blocks:
@@ -193,12 +336,12 @@ class NotionCrawler(BaseCrawler):
                         url = image_block.get("external", {}).get("url")
                     elif image_type == "file":
                         url = image_block.get("file", {}).get("url")
-                    
+
                     if url:
                         image_urls.append(url)
 
             content = "".join(self._render_block(b) for b in blocks if self._render_block(b))
-            
+
             hierarchy = self._extract_child_titles(blocks)
 
             last_edited_time_dt = datetime.fromisoformat(page.get("last_edited_time"))
@@ -210,6 +353,7 @@ class NotionCrawler(BaseCrawler):
                 title=page_title,
                 content=content,
                 image_gridfs_ids=image_urls,  # Initially store URLs
+                properties=properties,  # Add properties to document
                 ancestors=ancestors,
                 children=hierarchy["children"],
                 grandchildren=hierarchy["grandchildren"],
@@ -230,7 +374,7 @@ class NotionCrawler(BaseCrawler):
                     if file_id:
                         gridfs_ids.append(str(file_id))
                 doc.image_gridfs_ids = gridfs_ids
-            
+
             return doc
 
         except Exception as e:

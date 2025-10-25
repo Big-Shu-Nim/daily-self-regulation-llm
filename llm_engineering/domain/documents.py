@@ -1,5 +1,4 @@
 from abc import ABC
-from typing import Optional
 from datetime import datetime
 from pydantic import UUID4, Field
 
@@ -53,6 +52,7 @@ class NotionPageDocument(Document):
     url: str
     last_edited_time: datetime
     created_time: datetime
+    properties: dict = Field(default_factory=dict)  # Notion page properties (데이터베이스 필드 값)
     platform: str = "notion"
 
     class Settings:
