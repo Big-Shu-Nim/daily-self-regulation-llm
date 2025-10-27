@@ -184,3 +184,11 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 zenml/
+
+# explotary jupyter notebook
+notebooks/legacy
+
+# claude
+CLAUDE.md 
+project_prompt.md
+LLM-Engineers-Handbook-Reference/
