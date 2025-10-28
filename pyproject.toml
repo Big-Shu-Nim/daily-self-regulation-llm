@@ -98,7 +98,10 @@ args = [
     {name = "last_name", options = ["--last-name"], help = "User's last name"},
 ]
 
-
+# Preprocessing
+[tool.poe.tasks.run-preprocessing]
+help = "Run the preprocessing pipeline for all data sources"
+cmd = "poetry run python -m tools.run_preprocessing"
 
 [tool.poe.tasks.local-docker-infrastructure-up]
 cmd = "docker compose up -d"

@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
 
     # Gemini API
-    gemini_model_id: str
-    gemini_api_key: str
+    GEMINI_MODEL_ID: str | None = None
+    GEMINI_API_KEY: str | None = None
 
     # Huggingface API
     HUGGINGFACE_ACCESS_TOKEN: str | None = None
