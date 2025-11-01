@@ -10,12 +10,12 @@ class Settings(BaseSettings):
     # --- Required settings even when working locally. ---
 
     # OpenAI API
-    OPENAI_MODEL_ID: str = "gpt-4o-mini"
+    OPENAI_MODEL_ID: str | None = None
     OPENAI_API_KEY: str | None = None
 
     # Gemini API
     GEMINI_MODEL_ID: str | None = None
-    GEMINI_API_KEY: str | None = None
+    GOOGLE_API_KEY: str | None = None
 
     # Huggingface API
     HUGGINGFACE_ACCESS_TOKEN: str | None = None
