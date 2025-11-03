@@ -97,10 +97,27 @@ class VectorBaseDocument(BaseModel, Generic[T], ABC):
         return True
 
     @classmethod
-    def _bulk_insert(cls: Type[T], documents: list["VectorBaseDocument"]) -> None:
-        points = [doc.to_point() for doc in documents]
+    def _bulk_insert(cls: Type[T], documents: list["VectorBaseDocument"], chunk_size: int = 100) -> None:
+        """
+        Bulk insert documents with chunking to avoid payload size limits.
 
-        connection.upsert(collection_name=cls.get_collection_name(), points=points)
+        Args:
+            documents: List of documents to insert
+            chunk_size: Number of documents per chunk (default: 100)
+        """
+        collection_name = cls.get_collection_name()
+
+        # Process in chunks to avoid 32MB Qdrant payload limit
+        for i in range(0, len(documents), chunk_size):
+            chunk = documents[i : i + chunk_size]
+            points = [doc.to_point() for doc in chunk]
+
+            logger.info(
+                f"Inserting chunk {i // chunk_size + 1}/{(len(documents) + chunk_size - 1) // chunk_size} "
+                f"({len(points)} points) into '{collection_name}'"
+            )
+
+            connection.upsert(collection_name=collection_name, points=points)
 
     @classmethod
     def bulk_find(cls: Type[T], limit: int = 10, **kwargs) -> tuple[list[T], UUID | None]:

@@ -192,3 +192,6 @@ notebooks/legacy
 CLAUDE.md 
 project_prompt.md
 LLM-Engineers-Handbook-Reference/
+notebooks/02_preprocessing.ipynb
+notebooks/03_synthesis_test.ipynb
+notebooks/03_synthesis_STANDALONE.ipynb

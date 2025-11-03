@@ -27,15 +27,21 @@ from .base import BasePreprocessor
 from .calendar import CalendarPreprocessor
 from .notion import NotionPreprocessor
 from .naver import NaverPreprocessor
-from .synthesizer import DailySynthesizer
 from .dispatcher import PreprocessorDispatcher, PREPROCESSOR_REGISTRY
+from .embedding_handlers import (
+    CalendarEmbeddingHandler,
+    NotionEmbeddingHandler,
+    NaverEmbeddingHandler,
+)
 
 __all__ = [
     "BasePreprocessor",
     "CalendarPreprocessor",
     "NotionPreprocessor",
     "NaverPreprocessor",
-    "DailySynthesizer",
     "PreprocessorDispatcher",
     "PREPROCESSOR_REGISTRY",
+    "CalendarEmbeddingHandler",
+    "NotionEmbeddingHandler",
+    "NaverEmbeddingHandler",
 ]

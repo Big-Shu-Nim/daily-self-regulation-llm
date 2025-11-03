@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     COMET_API_KEY: str | None = None
     COMET_PROJECT: str = "twin"
 
+    # LangSmith (for LLM tracing and monitoring)
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: str | None = None
+    LANGCHAIN_PROJECT: str = "daily-self-regulation"
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
+
     # --- Required settings when deploying the code. ---
     # --- Otherwise, default values values work fine. ---
 
