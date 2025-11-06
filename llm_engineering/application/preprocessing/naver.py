@@ -69,7 +69,10 @@ class NaverPreprocessor(BasePreprocessor):
         # 4. ref_date 추출
         df = self._extract_ref_dates(df)
 
-        # 5. Cleaned documents로 변환
+        # 5. body_text 정리 (불필요한 헤더 제거)
+        df = self._clean_body_text(df)
+
+        # 6. Cleaned documents로 변환
         cleaned_documents = self._to_cleaned_documents(df)
 
         self.log(f"✅ Naver 전처리 완료: {len(cleaned_documents)}건")
@@ -148,6 +151,31 @@ class NaverPreprocessor(BasePreprocessor):
                     return date_from_pub
 
         return None
+
+    def _clean_body_text(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        body_text 필드에서 불필요한 헤더 제거.
+
+        Naver 블로그는 "본문 기타 기능" 같은 헤더가 포함될 수 있음.
+        이를 정규식으로 제거.
+        """
+        if 'body_text' in df.columns:
+            df['body_text'] = df['body_text'].fillna('').str.replace(
+                r'(?s)\A.*?본문\s*기타\s*기능\s*\n?',
+                '',
+                regex=True
+            )
+            self.log("✅ body_text 헤더 정리 완료")
+        elif 'body' in df.columns:
+            # 'body' 컬럼이 있는 경우 동일 처리
+            df['body'] = df['body'].fillna('').str.replace(
+                r'(?s)\A.*?본문\s*기타\s*기능\s*\n?',
+                '',
+                regex=True
+            )
+            self.log("✅ body 헤더 정리 완료")
+
+        return df
 
     def _to_cleaned_documents(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """

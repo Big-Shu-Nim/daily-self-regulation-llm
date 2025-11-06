@@ -95,7 +95,10 @@ class NotionPreprocessor(BasePreprocessor):
         # 6.5. General 타입의 ref_date 채우기 (created_time에서 추출)
         df_merged = self._fill_general_ref_dates(df_merged)
 
-        # 6.6. MVP: General 타입 문서를 invalid로 마킹
+        # 6.6. Ancestor depth 기반 재분류 (depth > 2인 문서를 general로)
+        df_merged = self._reclassify_by_ancestor_depth(df_merged, max_depth=2)
+
+        # 6.7. MVP: General 타입 문서를 invalid로 마킹
         df_merged = self._mark_general_as_invalid(df_merged)
 
         # 7. Cleaned documents로 변환
@@ -185,14 +188,19 @@ class NotionPreprocessor(BasePreprocessor):
         return df_diary
 
     def _process_weekly_reports(self, df: pd.DataFrame) -> pd.DataFrame:
-        """주간업무정리 문서를 처리합니다."""
+        """
+        주간업무정리 문서를 처리합니다.
+
+        ref_date는 week_start (대표 날짜)로 설정하고,
+        week_start_date/week_end_date는 메타데이터 전용으로 사용합니다.
+        """
         df_weekly = filter_by_ancestor_title(df, target_title='주간업무정리 ')
 
         if df_weekly.empty:
             self.log("⚠️ 주간업무정리 문서 없음")
             return pd.DataFrame()
 
-        # ref_date 추출 (title에서 먼저 시도, 실패 시 ancestor chain에서 추출)
+        # ref_date 및 주간 범위 추출
         df_weekly[["ref_date", "week_start_date", "week_end_date"]] = df_weekly.apply(
             lambda row: pd.Series(self._extract_weekly_dates(row)),
             axis=1
@@ -211,8 +219,16 @@ class NotionPreprocessor(BasePreprocessor):
         """
         Weekly report의 날짜 정보를 추출합니다.
 
+        로직:
+        1. Title 또는 Ancestor chain에서 주간 범위 (start, end) 추출
+        2. ref_date는 week_start로 설정 (대표 날짜, 단일 값 유지)
+        3. week_start_date, week_end_date는 메타데이터 전용 (검색 시 범위 필터용)
+
         Returns:
             (ref_date, week_start_date, week_end_date) 튜플
+            - ref_date: week_start와 동일 (top-level 단일 날짜 규칙 준수)
+            - week_start_date: 메타데이터 전용 (주간 범위 시작)
+            - week_end_date: 메타데이터 전용 (주간 범위 종료)
         """
         title = row.get("title", "")
         ancestor_chain = row.get("ancestor_chain", "")
@@ -220,7 +236,7 @@ class NotionPreprocessor(BasePreprocessor):
         # 1. Title에서 먼저 시도
         week_start, week_end = extract_week_range_from_title(title)
         if week_start is not None and week_end is not None:
-            ref_date = week_start.strftime('%Y-%m-%d')
+            ref_date = week_start.strftime('%Y-%m-%d')  # 대표 날짜 (주 시작일)
             week_start_str = week_start.strftime('%Y-%m-%d')
             week_end_str = week_end.strftime('%Y-%m-%d')
             return (ref_date, week_start_str, week_end_str)
@@ -233,7 +249,7 @@ class NotionPreprocessor(BasePreprocessor):
             for node in reversed(nodes):
                 week_start, week_end = extract_week_range_from_title(node)
                 if week_start is not None and week_end is not None:
-                    ref_date = week_start.strftime('%Y-%m-%d')
+                    ref_date = week_start.strftime('%Y-%m-%d')  # 대표 날짜
                     week_start_str = week_start.strftime('%Y-%m-%d')
                     week_end_str = week_end.strftime('%Y-%m-%d')
                     return (ref_date, week_start_str, week_end_str)
@@ -348,6 +364,56 @@ class NotionPreprocessor(BasePreprocessor):
 
             filled_count = df.loc[general_mask, 'ref_date'].notna().sum()
             self.log(f"✅ General 타입 ref_date 채우기: {filled_count}/{general_count}건")
+
+        return df
+
+    def _reclassify_by_ancestor_depth(self, df: pd.DataFrame, max_depth: int = 2) -> pd.DataFrame:
+        """
+        ancestor_chain의 깊이가 max_depth를 초과하는 문서를 general로 재분류합니다.
+
+        Args:
+            df: 병합된 DataFrame
+            max_depth: 최대 허용 깊이 (기본값 2)
+
+        Returns:
+            재분류된 DataFrame
+
+        Examples:
+            ancestor_chain = "업무 → 일일업무정리" → 깊이 2 (유지)
+            ancestor_chain = "업무 → 일일업무정리 → 2024년 → 9월" → 깊이 4 (general로 변경)
+        """
+        def get_depth(ancestor_chain):
+            """ancestor_chain의 깊이 계산 (→ 구분자 기준)"""
+            if pd.isnull(ancestor_chain) or ancestor_chain == "":
+                return 0
+            # → 구분자로 분리하여 개수 세기
+            nodes = [n.strip() for n in str(ancestor_chain).split('→') if n.strip()]
+            return len(nodes)
+
+        # 깊이 계산
+        df['_depth'] = df['ancestor_chain'].apply(get_depth)
+
+        # max_depth 초과하는 문서 마스크
+        mask = df['_depth'] > max_depth
+
+        # 재분류 전 통계
+        reclassified_count = mask.sum()
+        if reclassified_count > 0:
+            self.log(f"📊 Ancestor chain 깊이 기반 재분류 (깊이 > {max_depth})")
+
+            # doc_type별 재분류 통계
+            reclassified_types = df.loc[mask, 'doc_type'].value_counts()
+            for doc_type, count in reclassified_types.items():
+                self.log(f"  - {doc_type}: {count}개 → general")
+
+            # general로 변경
+            df.loc[mask, 'doc_type'] = 'general'
+            df.loc[mask, 'is_valid'] = False
+
+            self.log(f"✅ {reclassified_count}개 문서를 'general'로 재분류 완료")
+
+        # 임시 컬럼 제거
+        df = df.drop(columns=['_depth'])
 
         return df
 

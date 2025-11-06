@@ -138,6 +138,51 @@ class NoSQLBaseDocument(BaseModel, Generic[T], ABC):
             return False
 
     @classmethod
+    def bulk_upsert(cls: Type[T], documents: list[T], match_field: str = "_id", **kwargs) -> dict:
+        """
+        Bulk upsert documents using MongoDB's bulk_write API.
+
+        Args:
+            documents: List of documents to upsert
+            match_field: Field to match on for upsert (default: "_id")
+            **kwargs: Additional options for to_mongo()
+
+        Returns:
+            dict with counts: {"matched": int, "modified": int, "upserted": int}
+        """
+        from pymongo import ReplaceOne
+
+        collection = _database[cls.get_collection_name()]
+
+        if not documents:
+            return {"matched": 0, "modified": 0, "upserted": 0}
+
+        try:
+            operations = []
+            for doc in documents:
+                doc_data = doc.to_mongo(**kwargs)
+                filter_dict = {match_field: doc_data.get(match_field)}
+                operations.append(ReplaceOne(filter_dict, doc_data, upsert=True))
+
+            result = collection.bulk_write(operations, ordered=False)
+
+            logger.info(
+                f"Bulk upsert completed for {cls.__name__}: "
+                f"matched={result.matched_count}, "
+                f"modified={result.modified_count}, "
+                f"upserted={result.upserted_count}"
+            )
+
+            return {
+                "matched": result.matched_count,
+                "modified": result.modified_count,
+                "upserted": result.upserted_count
+            }
+        except (errors.WriteError, errors.BulkWriteError) as e:
+            logger.error(f"Failed to bulk upsert documents of type {cls.__name__}: {e}")
+            return {"matched": 0, "modified": 0, "upserted": 0}
+
+    @classmethod
     def find(cls: Type[T], **filter_options) -> T | None:
         collection = _database[cls.get_collection_name()]
         try:

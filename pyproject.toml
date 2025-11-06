@@ -49,6 +49,8 @@ openpyxl = "^3.1.5"
 python-dotenv = "^1.1.1"
 pandas = "^2.3.3"
 google-generativeai = "^0.8.5"
+rank-bm25 = "^0.2.2"
+streamlit = "^1.39.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -100,8 +102,24 @@ args = [
 ]
 
 # Preprocessing
+[tool.poe.tasks.preprocess]
+help = "Run incremental preprocessing (changed documents only, no save)"
+cmd = "poetry run python -m tools.run_preprocessing"
+
+[tool.poe.tasks.preprocess-save]
+help = "Run incremental preprocessing and save to MongoDB"
+cmd = "poetry run python -m tools.run_preprocessing --save"
+
+[tool.poe.tasks.preprocess-full]
+help = "Run full preprocessing (all documents, no save)"
+cmd = "poetry run python -m tools.run_preprocessing --full"
+
+[tool.poe.tasks.preprocess-full-save]
+help = "Run full preprocessing and save to MongoDB"
+cmd = "poetry run python -m tools.run_preprocessing --full --save"
+
 [tool.poe.tasks.run-preprocessing]
-help = "Run the preprocessing pipeline for all data sources"
+help = "[DEPRECATED] Use 'poe preprocess' or 'poe preprocess-save' instead"
 cmd = "poetry run python -m tools.run_preprocessing"
 
 [tool.poe.tasks.local-docker-infrastructure-up]
@@ -204,6 +222,20 @@ cmd = "poetry run zenml login --local --blocking"
 
 [[tool.poe.tasks.local-zenml-server-up.switch]]
 cmd = "poetry run zenml login --local"
+
+# RAG Query
+[tool.poe.tasks.query]
+help = "Ask a question to the RAG system. e.g. poe query -q '오늘 뭐 했어?'"
+script = "tools.run_rag_query:main"
+
+[tool.poe.tasks.query-interactive]
+help = "Interactive RAG query mode. e.g. poe query-interactive"
+cmd = "poetry run python -m tools.run_rag_query --interactive --verbose"
+
+[tool.poe.tasks.chatbot]
+help = "Launch the Streamlit chatbot frontend. e.g. poe chatbot"
+cmd = "poetry run streamlit run llm_engineering/application/rag/streamlit_app.py"
+env = { PYTHONPATH = "${PWD}" }
 
 # Tests
 [tool.poe.tasks.test]

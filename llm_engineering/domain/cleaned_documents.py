@@ -112,9 +112,12 @@ class CleanedNotionDocument(CleanedDocument):
     #     "ancestor_chain": "일일업무정리 → 2024년 1월 → ...",
     #     "created_time": "2024-01-15T09:00:00",
     #     "last_edited_time": "2024-01-15T18:00:00",
-    #     "properties": {...},  # Notion 데이터베이스 속성 -> 삭제예정 
+    #     "properties": {...},  # Notion 데이터베이스 속성 -> 삭제예정
     #     "has_images": true,
-    #     "image_gridfs_ids": ["id1", "id2"]
+    #     "image_gridfs_ids": ["id1", "id2"],
+    #     # Weekly report 전용 필드 (doc_type == 'weekly_report'인 경우만)
+    #     "week_start_date": "2024-09-23",  # 주간 범위 시작일
+    #     "week_end_date": "2024-09-29"     # 주간 범위 종료일
     # }
 
     class Settings:
