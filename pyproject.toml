@@ -110,6 +110,23 @@ cmd = "poetry run python -m tools.run_preprocessing"
 help = "Run incremental preprocessing and save to MongoDB"
 cmd = "poetry run python -m tools.run_preprocessing --save"
 
+# Agency Classification
+[tool.poe.tasks.classify-agency-daily]
+help = "Classify agency roles for a specific day. e.g. poe classify-agency-daily --date 2025-10-20"
+script = "tools.run_agency_classifier:main"
+
+[tool.poe.tasks.classify-agency-weekly]
+help = "Classify agency roles for a week. e.g. poe classify-agency-weekly --start-date 2025-10-14"
+script = "tools.run_agency_classifier:main"
+
+[tool.poe.tasks.classify-agency-monthly]
+help = "Classify agency roles for a month (parallel by default). e.g. poe classify-agency-monthly --year 2025 --month 10"
+script = "tools.run_agency_classifier:main"
+
+[tool.poe.tasks.classify-agency]
+help = "Run agency role classifier (interactive). e.g. poe classify-agency monthly --year 2025 --month 10 --parallel"
+cmd = "poetry run python -m tools.run_agency_classifier"
+
 [tool.poe.tasks.preprocess-full]
 help = "Run full preprocessing (all documents, no save)"
 cmd = "poetry run python -m tools.run_preprocessing --full"
@@ -236,6 +253,19 @@ cmd = "poetry run python -m tools.run_rag_query --interactive --verbose"
 help = "Launch the Streamlit chatbot frontend. e.g. poe chatbot"
 cmd = "poetry run streamlit run llm_engineering/application/rag/streamlit_app.py"
 env = { PYTHONPATH = "${PWD}" }
+
+# In-Context Feedback Services
+[tool.poe.tasks.feedback-daily]
+help = "Generate daily feedback (in-context). e.g. poe feedback-daily --date 2025-10-20"
+cmd = "poetry run python tools/run_feedback.py daily"
+
+[tool.poe.tasks.feedback-weekly]
+help = "Generate weekly feedback. e.g. poe feedback-weekly --start-date 2025-10-14"
+cmd = "poetry run python tools/run_feedback.py weekly"
+
+[tool.poe.tasks.feedback-monthly]
+help = "Generate monthly feedback. e.g. poe feedback-monthly --year 2025 --month 10"
+cmd = "poetry run python tools/run_feedback.py monthly"
 
 # Tests
 [tool.poe.tasks.test]
