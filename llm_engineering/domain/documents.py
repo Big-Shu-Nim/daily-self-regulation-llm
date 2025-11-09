@@ -82,8 +82,9 @@ class CalendarDocument(Document):
     start_datetime: datetime
     end_datetime: datetime
     calendar_name: str
+    sub_category: str | None = None
     duration_minutes: int
-    
+
 
     platform: str | None = "icloud_calendar"
 

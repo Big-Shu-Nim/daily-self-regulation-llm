@@ -44,6 +44,7 @@ class CalendarCrawler(BaseCrawler):
                 "Start Date/Time": "start_datetime",
                 "End Date/Time": "end_datetime",
                 "Category": "calendar_name",
+                "Sub Category": "sub_category",
                 "Duration (Minutes)": "duration_minutes",
                 "URL": "url",  # This column is read but not currently saved to the database.
             }
@@ -71,10 +72,16 @@ class CalendarCrawler(BaseCrawler):
             event_key = (row.get("title"), row.get("start_datetime"))
             if event_key not in existing_events_set:
                 try:
+                    # Convert NaN values to None for optional string fields
+                    sub_category = row.get("sub_category")
+                    if pd.isna(sub_category):
+                        sub_category = None
+
                     documents_to_insert.append(self.model(
                         content={"title": row.get("title"), "notes": row.get("notes")},
                         start_datetime=row.get("start_datetime"), end_datetime=row.get("end_datetime"),
-                        calendar_name=row.get("calendar_name"), duration_minutes=row.get("duration_minutes"),
+                        calendar_name=row.get("calendar_name"), sub_category=sub_category,
+                        duration_minutes=row.get("duration_minutes"),
                         author_id=user.id, author_full_name=user.full_name
                     ))
                 except Exception as e:
