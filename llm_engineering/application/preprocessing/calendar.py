@@ -22,8 +22,78 @@ class CalendarPreprocessor(BasePreprocessor):
     2. 자정을 넘는 활동 분할
     3. ref_date 할당 (수면 활동은 종료 날짜 기준)
     4. 조건부 카테고리 이름 변경
-    5. 구조화 데이터를 자연어로 변환 (임베딩용 content 생성)
+    5. 태그 추출 및 정규화, Agency 모드 매핑, 행동 플래그 설정
+    6. 구조화 데이터를 자연어로 변환 (임베딩용 content 생성)
     """
+
+    # Sub Category 통합 규칙
+    SUB_CATEGORY_NORMALIZATION_RULES = {
+        # 휴식/회복 관련
+        "휴식": "#휴식/회복",
+        "회복": "#휴식/회복",
+        "#휴식": "#휴식/회복",
+        "#회복": "#휴식/회복",
+
+        # 유지/정리 관련
+        "유지": "#유지/정리",
+        "정리": "#유지/정리",
+        "#유지": "#유지/정리",
+        "#정리": "#유지/정리",
+
+        # 즉시만족 관련
+        "즉시만족": "#즉시만족",
+        "충동": "#즉시만족",
+        "#충동": "#즉시만족",
+
+        # 계획 관련
+        "계획": "#계획",
+
+        # 긴급 관련
+        "긴급": "#긴급",
+    }
+
+    # ID 기반 아웃라이어 특수 처리: document_id → (new_sub_category, new_category)
+    ID_BASED_FIXES = {
+        "f2ab26f3-6bc5-42cb-8cd5-7848ef51bfc7": ("#휴식/회복", None),
+        "db40fbdc-6004-4420-a726-2dcc00ee491d": ("#유지/정리", "인간관계"),
+    }
+
+    # Agency 모드 매핑: calendar_name → agency_mode
+    AGENCY_MODE_RULES = {
+        "Work/Production": [
+            "일 / 생산", "프로젝트", "부업", "업무", "작업"
+        ],
+        "Learning/Growth": [
+            "학습 / 성장", "스터디", "독서", "강의", "공부", "연습", "리서치"
+        ],
+        "Impulse/Distraction": [
+            "충동루프", "충동 / 즉시만족", "즉시만족"
+        ],
+        "Rest/Recovery": [
+            "수면", "운동", "휴식 / 회복", "휴식", "회복", "헬스", "유산소", "러닝"
+        ],
+        "Maintenance/Organization": [
+            "daily/chore", "daily", "chore", "유지 / 정리", "유지",
+            "식사", "샤워", "세면", "이동", "출퇴근"
+        ]
+    }
+
+    # 이벤트 이름 단순 통일 규칙
+    SIMPLE_NORMALIZATION = {
+        # 유튜브 변형들
+        "유튜브 보기": "유튜브",
+        "유투브": "유튜브",
+        "유튜브 시청": "유튜브",
+
+        # 식사
+        "아침식사": "식사",
+        "점심식사": "식사",
+        "저녁식사": "식사",
+        "식사준비": "식사",
+    }
+
+    # 인식할 태그 (4가지만)
+    RECOGNIZED_TAGS = ["#유지/정리", "#휴식/회복", "#감정이벤트", "#즉시만족"]
 
     def __init__(
         self,
@@ -74,7 +144,11 @@ class CalendarPreprocessor(BasePreprocessor):
         # 5. 카테고리 이름 변경
         df = self._rename_categories(df)
 
-        # 6. 자연어 content 생성 및 cleaned document로 변환
+        # 6. 태그 정규화 및 메타데이터 enrichment
+        df = self._apply_tag_normalization(df)
+        self.log("✅ 태그 정규화 및 메타데이터 enrichment 완료")
+
+        # 7. 자연어 content 생성 및 cleaned document로 변환
         cleaned_documents = self._to_cleaned_documents(df)
 
         self.log(f"✅ Calendar 전처리 완료: {len(cleaned_documents)}건")
@@ -157,6 +231,190 @@ class CalendarPreprocessor(BasePreprocessor):
 
         return df
 
+    def _extract_tags_from_subcategory(self, sub_category: str) -> List[str]:
+        """
+        Sub Category에서 태그를 추출합니다.
+
+        Args:
+            sub_category: 서브 카테고리 문자열
+
+        Returns:
+            추출된 태그 리스트 (4가지 인식 태그만)
+        """
+        if not sub_category:
+            return []
+
+        tags = []
+        for tag in self.RECOGNIZED_TAGS:
+            if tag in sub_category:
+                tags.append(tag)
+
+        return tags
+
+    def _clean_subcategory(
+        self,
+        sub_category: str,
+        category: str,
+        document_id: str
+    ) -> tuple:
+        """
+        Sub Category를 정리합니다.
+
+        우선순위:
+        1. ID 기반 특수 처리 (최우선)
+        2. 통합 규칙 적용
+        3. 공백 제거 및 정리
+
+        Args:
+            sub_category: 원본 sub_category
+            category: 카테고리 이름
+            document_id: 문서 ID (ID 기반 수정용)
+
+        Returns:
+            (cleaned_sub_category, new_category)
+        """
+        # 1. ID 기반 특수 처리 (최우선)
+        if document_id and document_id in self.ID_BASED_FIXES:
+            new_sub, new_cat = self.ID_BASED_FIXES[document_id]
+            return new_sub, new_cat
+
+        # 2. None이거나 빈 문자열이면 그대로 반환
+        if not sub_category or sub_category.strip() == "":
+            return "", None
+
+        # 3. 공백 제거
+        cleaned = sub_category.strip()
+
+        # 4. 통합 규칙 적용 (정확히 일치하는 경우)
+        if cleaned in self.SUB_CATEGORY_NORMALIZATION_RULES:
+            normalized = self.SUB_CATEGORY_NORMALIZATION_RULES[cleaned]
+            return normalized, None
+
+        # 5. 대소문자 무시하고 다시 시도
+        cleaned_lower = cleaned.lower()
+        for pattern, normalized in self.SUB_CATEGORY_NORMALIZATION_RULES.items():
+            if pattern.lower() == cleaned_lower:
+                return normalized, None
+
+        # 6. 부분 매칭 (# 태그가 아닌 경우에만)
+        if not cleaned.startswith("#"):
+            for pattern, normalized in self.SUB_CATEGORY_NORMALIZATION_RULES.items():
+                if pattern.lower() in cleaned_lower:
+                    return normalized, None
+
+        # 7. 규칙이 없으면 그대로 반환
+        return cleaned, None
+
+    def _map_agency_mode(self, category: str, sub_category: str) -> str:
+        """
+        Agency 모드를 매핑합니다.
+
+        우선순위:
+        1. sub_category 기준 매핑
+        2. category 기준 매핑
+        3. 기본값 → Maintenance/Organization
+
+        Args:
+            category: calendar_name
+            sub_category: 서브 카테고리
+
+        Returns:
+            Agency 모드 (5가지 중 하나)
+        """
+        # 우선순위 1: sub_category 기준 매핑
+        sub_lower = sub_category.lower()
+        if "휴식" in sub_lower or "회복" in sub_lower:
+            return "Rest/Recovery"
+        if "유지" in sub_lower or "정리" in sub_lower:
+            return "Maintenance/Organization"
+
+        # 우선순위 2: category 기준 매핑
+        category_lower = category.lower()
+        for mode, keywords in self.AGENCY_MODE_RULES.items():
+            for keyword in keywords:
+                if keyword.lower() in category_lower:
+                    return mode
+
+        # 기본값
+        return "Maintenance/Organization"
+
+    def _normalize_title(self, title: str) -> str:
+        """
+        이벤트 이름을 정규화합니다.
+
+        Args:
+            title: 원본 이벤트 제목
+
+        Returns:
+            정규화된 제목
+        """
+        if not title:
+            return ""
+
+        # 단순 통일
+        normalized_title = title
+        for original, normalized in self.SIMPLE_NORMALIZATION.items():
+            if original.lower() in normalized_title.lower():
+                normalized_title = normalized_title.replace(original, normalized)
+
+        return normalized_title
+
+    def _apply_tag_normalization(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        DataFrame에 태그 정규화, Agency 모드 매핑, 행동 플래그를 적용합니다.
+
+        Args:
+            df: 전처리 중인 Calendar DataFrame
+
+        Returns:
+            메타데이터가 enriched된 DataFrame
+        """
+        # 태그, agency_mode, 플래그를 저장할 컬럼 초기화
+        df['extracted_tags'] = None
+        df['agency_mode'] = None
+        df['normalized_title'] = None
+        df['is_risk_recharger'] = False
+        df['is_emotional_event'] = False
+
+        for idx, row in df.iterrows():
+            document_id = str(row['id'])
+            sub_category = row.get('sub_category', '') or ''
+            category = row.get('calendar_name', '')
+            title = row.get('event_name', '')
+
+            # 1. 태그 추출
+            extracted_tags = self._extract_tags_from_subcategory(sub_category)
+
+            # 2. Sub category 정규화
+            cleaned_sub_category, new_category = self._clean_subcategory(
+                sub_category, category, document_id
+            )
+
+            # ID 기반 수정으로 카테고리가 변경된 경우
+            if new_category:
+                category = new_category
+                df.at[idx, 'calendar_name'] = new_category
+
+            # 3. Agency 모드 매핑
+            agency_mode = self._map_agency_mode(category, cleaned_sub_category)
+
+            # 4. 이벤트 제목 정규화
+            normalized_title = self._normalize_title(title)
+
+            # 5. 플래그 설정
+            is_risk_recharger = "#즉시만족" in extracted_tags
+            is_emotional_event = "#감정이벤트" in extracted_tags
+
+            # DataFrame 업데이트
+            df.at[idx, 'sub_category'] = cleaned_sub_category
+            df.at[idx, 'extracted_tags'] = extracted_tags
+            df.at[idx, 'agency_mode'] = agency_mode
+            df.at[idx, 'normalized_title'] = normalized_title
+            df.at[idx, 'is_risk_recharger'] = is_risk_recharger
+            df.at[idx, 'is_emotional_event'] = is_emotional_event
+
+        return df
+
     def _to_cleaned_documents(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """
         DataFrame을 CleanedCalendarDocument dict 리스트로 변환.
@@ -168,7 +426,7 @@ class CalendarPreprocessor(BasePreprocessor):
             # 자연어 content 생성
             content = self._synthesize_natural_language_content(row)
 
-            # Metadata 구성
+            # Metadata 구성 (기본 정보 + enriched 정보)
             metadata = {
                 "start_datetime": row['start_datetime'].isoformat() if pd.notna(row['start_datetime']) else None,
                 "end_datetime": row['end_datetime'].isoformat() if pd.notna(row['end_datetime']) else None,
@@ -176,7 +434,14 @@ class CalendarPreprocessor(BasePreprocessor):
                 "category_name": row.get('calendar_name', ''),
                 "event_name": row.get('event_name', ''),
                 "notes": row.get('notes', ''),
-                "is_sleep": "수면" in str(row.get("event_name", ""))
+                "is_sleep": "수면" in str(row.get("event_name", "")),
+
+                # Enriched metadata from tag normalization
+                "agency_mode": row.get('agency_mode', 'Maintenance/Organization'),
+                "normalized_title": row.get('normalized_title', row.get('event_name', '')),
+                "is_risk_recharger": bool(row.get('is_risk_recharger', False)),
+                "is_emotional_event": bool(row.get('is_emotional_event', False)),
+                "tags": row.get('extracted_tags', []) if pd.notna(row.get('extracted_tags')) else [],
             }
 
             # CleanedCalendarDocument dict 생성
@@ -202,13 +467,14 @@ class CalendarPreprocessor(BasePreprocessor):
 
         예시 출력:
         "2024년 1월 15일 월요일, 오전 9시부터 11시까지 2시간 동안 '프로젝트 개발' 활동을 했습니다.
-        카테고리: 개인개발. 메모: API 설계 및 데이터베이스 스키마 작성 완료."
+        카테고리: 개인개발. 서브 카테고리: #휴식/회복. 메모: API 설계 및 데이터베이스 스키마 작성 완료."
         """
         start_dt = row['start_datetime']
         end_dt = row['end_datetime']
         duration_minutes = row.get('duration_minutes', 0)
         event_name = row.get('event_name', '활동')
         category = row.get('calendar_name', '')
+        sub_category = row.get('sub_category', '')
         notes = row.get('notes', '')
 
         # 날짜 정보
@@ -244,6 +510,10 @@ class CalendarPreprocessor(BasePreprocessor):
         # 카테고리 추가
         if category:
             content_parts.append(f"카테고리: {category}.")
+
+        # 서브 카테고리 추가
+        if sub_category and sub_category.strip():
+            content_parts.append(f"서브 카테고리: {sub_category}.")
 
         # 메모 추가
         if notes and notes.strip():
