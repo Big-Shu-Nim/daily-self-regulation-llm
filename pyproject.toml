@@ -51,6 +51,7 @@ pandas = "^2.3.3"
 google-generativeai = "^0.8.5"
 rank-bm25 = "^0.2.2"
 streamlit = "^1.39.0"
+plotly = "^5.24.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -252,6 +253,11 @@ cmd = "poetry run python -m tools.run_rag_query --interactive --verbose"
 [tool.poe.tasks.chatbot]
 help = "Launch the Streamlit chatbot frontend. e.g. poe chatbot"
 cmd = "poetry run streamlit run llm_engineering/application/rag/streamlit_app.py"
+env = { PYTHONPATH = "${PWD}" }
+
+[tool.poe.tasks.daily-report]
+help = "Launch the daily activity report dashboard. e.g. poe daily-report"
+cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_daily_report.py"
 env = { PYTHONPATH = "${PWD}" }
 
 # In-Context Feedback Services
