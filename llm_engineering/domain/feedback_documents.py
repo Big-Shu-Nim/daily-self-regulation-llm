@@ -103,6 +103,33 @@ class WeeklyFeedbackDocument(FeedbackDocument):
         ]
 
 
+class PublicDailyFeedbackDocument(FeedbackDocument):
+    """
+    공개용 일일 피드백 문서.
+
+    개인정보 보호된 공개용 피드백을 별도 컬렉션에 저장합니다.
+    - 프롬프트 스타일: "public" 고정
+    - 날짜 범위: 2025-11-05 ~ 2025-11-12 (샘플)
+    - 개인용 피드백과 분리된 컬렉션
+    """
+
+    feedback_type: str = "daily"
+
+    # 공개용은 "public" 프롬프트만 사용
+    prompt_style: str = "public"
+
+    # 컨텍스트 윈도우 설정
+    include_previous: bool = True
+    include_next: bool = True
+
+    class Settings:
+        name = "public_daily_feedback"  # 별도 컬렉션
+        indexes = [
+            [("target_date", 1)],  # 날짜 검색용
+            [("generated_at", -1)],  # 최신순 정렬용
+        ]
+
+
 class MonthlyFeedbackDocument(FeedbackDocument):
     """
     월간 피드백 문서.

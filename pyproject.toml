@@ -260,6 +260,11 @@ help = "Launch the daily activity report dashboard. e.g. poe daily-report"
 cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_daily_report.py"
 env = { PYTHONPATH = "${PWD}" }
 
+[tool.poe.tasks.public-dashboard]
+help = "Launch the public activity report dashboard (privacy-protected). e.g. poe public-dashboard"
+cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_public_dashboard.py"
+env = { PYTHONPATH = "${PWD}" }
+
 # In-Context Feedback Services
 [tool.poe.tasks.feedback-daily]
 help = "Generate daily feedback (in-context). e.g. poe feedback-daily --date 2025-10-20"

@@ -22,6 +22,7 @@ from .feedback_documents import (
     DailyFeedbackDocument,
     FeedbackDocument,
     MonthlyFeedbackDocument,
+    PublicDailyFeedbackDocument,
     WeeklyFeedbackDocument,
 )
 from .types import DataCategory
@@ -50,4 +51,5 @@ __all__ = [
     "DailyFeedbackDocument",
     "WeeklyFeedbackDocument",
     "MonthlyFeedbackDocument",
+    "PublicDailyFeedbackDocument",
 ]

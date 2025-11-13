@@ -33,7 +33,6 @@ from .embedding_handlers import (
     NotionEmbeddingHandler,
     NaverEmbeddingHandler,
 )
-from .agency_classifier import AgencyClassifier
 
 __all__ = [
     "BasePreprocessor",
@@ -45,5 +44,4 @@ __all__ = [
     "CalendarEmbeddingHandler",
     "NotionEmbeddingHandler",
     "NaverEmbeddingHandler",
-    "AgencyClassifier",
 ]

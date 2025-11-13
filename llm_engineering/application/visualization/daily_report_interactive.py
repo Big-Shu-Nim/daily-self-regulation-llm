@@ -24,7 +24,8 @@ def format_duration(minutes: float) -> str:
 
 def plot_work_by_event_interactive(
     df: pd.DataFrame,
-    height: int = 600
+    height: int = 600,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     일/생산 이벤트별 시간 (Interactive, 호버 시 메모 표시)
@@ -32,6 +33,7 @@ def plot_work_by_event_interactive(
     Args:
         df: 활동 데이터프레임
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -84,10 +86,7 @@ def plot_work_by_event_interactive(
 
     # Layout 설정 (v5 agency 스타일)
     fig.update_layout(
-        title=dict(
-            text=f'일/생산 - 이벤트별 집중 시간 ({len(work_df)}개)',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title=f'일/생산 - 이벤트별 집중 시간 ({len(work_df)}개)' if show_title else '',
         xaxis=dict(visible=False),  # X축 숨김
         yaxis=dict(
             tickfont=dict(size=10, color='white'),
@@ -107,7 +106,8 @@ def plot_work_by_event_interactive(
 
 def plot_learning_by_event_interactive(
     df: pd.DataFrame,
-    height: int = 600
+    height: int = 600,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     학습/성장 이벤트별 시간 (Interactive, 호버 시 메모 표시)
@@ -115,6 +115,7 @@ def plot_learning_by_event_interactive(
     Args:
         df: 활동 데이터프레임
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -172,10 +173,7 @@ def plot_learning_by_event_interactive(
 
     # Layout 설정 (v5 agency 스타일)
     fig.update_layout(
-        title=dict(
-            text=f'학습/성장 - 이벤트별 집중 시간 ({len(learning_df)}개)',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title=f'학습/성장 - 이벤트별 집중 시간 ({len(learning_df)}개)' if show_title else '',
         xaxis=dict(visible=False),  # X축 숨김
         yaxis=dict(
             tickfont=dict(size=10, color='white'),
@@ -196,7 +194,8 @@ def plot_learning_by_event_interactive(
 def plot_recharge_by_event_interactive(
     df: pd.DataFrame,
     top_n: int = 15,
-    height: int = 600
+    height: int = 600,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     재충전 활동 이벤트별 시간 (Interactive, 호버 시 메모 표시)
@@ -207,6 +206,7 @@ def plot_recharge_by_event_interactive(
         df: 활동 데이터프레임
         top_n: 상위 N개 이벤트 표시
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -264,11 +264,11 @@ def plot_recharge_by_event_interactive(
 
         hover_texts.append('<br>'.join(hover_parts))
 
-        # 색상: #인간관계면 진한 녹색(소셜), 아니면 기본 녹색
+        # 색상: #인간관계면 진한 녹색(소셜), 아니면 밝은 녹색
         if row.get('has_relationship_tag'):
-            colors.append('#456558')  # 소셜 재충전 (진한 녹색)
+            colors.append('#2d4a3e')  # 소셜 재충전 (진한 녹색)
         else:
-            colors.append('#6A8E7F')  # 전체 재충전 (기본 녹색)
+            colors.append('#7fb8a3')  # 전체 재충전 (밝은 녹색)
 
     # Figure 생성
     fig = go.Figure()
@@ -284,10 +284,7 @@ def plot_recharge_by_event_interactive(
 
     # Layout 설정 (v5 agency 스타일)
     fig.update_layout(
-        title=dict(
-            text=f'재충전 활동 - 이벤트별 시간 (TOP {len(recharge_df)}개)',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title=f'재충전 활동 - 이벤트별 시간 (TOP {len(recharge_df)}개)' if show_title else '',
         xaxis=dict(visible=False),  # X축 숨김
         yaxis=dict(
             tickfont=dict(size=10, color='white'),
@@ -307,7 +304,8 @@ def plot_recharge_by_event_interactive(
 
 def plot_drain_by_event_interactive(
     df: pd.DataFrame,
-    height: int = 600
+    height: int = 600,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     Drain 이벤트별 시간 (Interactive, 호버 시 메모 표시)
@@ -315,6 +313,7 @@ def plot_drain_by_event_interactive(
     Args:
         df: 활동 데이터프레임
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -366,10 +365,7 @@ def plot_drain_by_event_interactive(
 
     # Layout 설정 (v5 agency 스타일)
     fig.update_layout(
-        title=dict(
-            text=f'Drain - 이벤트별 시간 ({len(drain_df)}개)',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title=f'Drain - 이벤트별 시간 ({len(drain_df)}개)' if show_title else '',
         xaxis=dict(visible=False),  # X축 숨김
         yaxis=dict(
             tickfont=dict(size=10, color='white'),
@@ -390,7 +386,8 @@ def plot_drain_by_event_interactive(
 def plot_maintenance_by_event_interactive(
     df: pd.DataFrame,
     top_n: int = 15,
-    height: int = 600
+    height: int = 600,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     일상 관리 이벤트별 시간 (Interactive, 호버 시 메모 표시)
@@ -401,6 +398,7 @@ def plot_maintenance_by_event_interactive(
         df: 활동 데이터프레임
         top_n: 상위 N개 이벤트 표시
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -452,11 +450,11 @@ def plot_maintenance_by_event_interactive(
 
         hover_texts.append('<br>'.join(hover_parts))
 
-        # 색상: #인간관계면 진한 브라운(소셜), 아니면 기본 브라운
+        # 색상: #인간관계면 진한 브라운(소셜), 아니면 밝은 브라운
         if row.get('has_relationship_tag'):
-            colors.append('#6D554C')  # 소셜 활동 (진한 브라운)
+            colors.append('#5a3d33')  # 소셜 활동 (진한 브라운)
         else:
-            colors.append('#8D6E63')  # 일상 관리 (기본 브라운)
+            colors.append('#a67c6a')  # 일상 관리 (밝은 브라운)
 
     # Figure 생성
     fig = go.Figure()
@@ -472,10 +470,7 @@ def plot_maintenance_by_event_interactive(
 
     # Layout 설정 (v5 agency 스타일)
     fig.update_layout(
-        title=dict(
-            text=f'일상 관리 - 이벤트별 시간 (TOP {len(maintenance_df)}개)',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title=f'일상 관리 - 이벤트별 시간 (TOP {len(maintenance_df)}개)' if show_title else '',
         xaxis=dict(visible=False),  # X축 숨김
         yaxis=dict(
             tickfont=dict(size=10, color='white'),
@@ -495,7 +490,8 @@ def plot_maintenance_by_event_interactive(
 
 def plot_relationship_by_agency_interactive(
     df: pd.DataFrame,
-    height: int = 600
+    height: int = 600,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     #인간관계 태그가 있는 활동들을 Agency별로 분류 (Interactive, 호버 시 메모 표시)
@@ -503,6 +499,7 @@ def plot_relationship_by_agency_interactive(
     Args:
         df: 활동 데이터프레임
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -590,10 +587,7 @@ def plot_relationship_by_agency_interactive(
 
     # Layout 설정 (v5 agency 스타일)
     fig.update_layout(
-        title=dict(
-            text='#인간관계 태그 - Agency별 시간 분포',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title='#인간관계 태그 - Agency별 시간 분포' if show_title else '',
         xaxis=dict(visible=False),  # X축 숨김
         yaxis=dict(
             tickfont=dict(size=11, color='white'),
@@ -613,7 +607,8 @@ def plot_relationship_by_agency_interactive(
 
 def plot_agency_pie_chart_interactive(
     df: pd.DataFrame,
-    height: int = 600
+    height: int = 600,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     Agency 기반 파이 차트 (Interactive, 호버 시 실제 시간 표시)
@@ -621,6 +616,7 @@ def plot_agency_pie_chart_interactive(
     Args:
         df: 활동 데이터프레임
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -684,10 +680,7 @@ def plot_agency_pie_chart_interactive(
 
     # Layout 설정 (v5 agency 스타일)
     fig.update_layout(
-        title=dict(
-            text='주요 활동 영역별 시간 분포 (Agency)',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title='주요 활동 영역별 시간 분포 (Agency)' if show_title else '',
         height=height,
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -703,7 +696,8 @@ def plot_agency_pie_chart_interactive(
 
 def plot_category_distribution_interactive(
     df: pd.DataFrame,
-    height: int = 600
+    height: int = 600,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     카테고리별 시간 분포 (Interactive, 하루 기준 퍼센티지 표시)
@@ -711,6 +705,7 @@ def plot_category_distribution_interactive(
     Args:
         df: 활동 데이터프레임
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -762,10 +757,7 @@ def plot_category_distribution_interactive(
 
     # Layout 설정 (v5 스타일)
     fig.update_layout(
-        title=dict(
-            text='카테고리별 시간 분포',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title='카테고리별 시간 분포' if show_title else '',
         xaxis=dict(visible=False),  # X축 숨김
         yaxis=dict(
             tickfont=dict(size=11, color='white'),
@@ -784,7 +776,8 @@ def plot_category_distribution_interactive(
 
 def plot_sleep_breakdown_interactive(
     df: pd.DataFrame,
-    height: int = 500
+    height: int = 500,
+    show_title: bool = True
 ) -> Optional[go.Figure]:
     """
     수면 상세 분석 (Interactive, 호버 시 메모 표시)
@@ -792,6 +785,7 @@ def plot_sleep_breakdown_interactive(
     Args:
         df: 활동 데이터프레임
         height: 그래프 높이
+        show_title: 차트 제목 표시 여부 (기본: True, Jupyter용. Streamlit에서는 False)
 
     Returns:
         plotly Figure 객체 (데이터 없으면 None)
@@ -875,10 +869,7 @@ def plot_sleep_breakdown_interactive(
 
     # Layout 설정 (v5 스타일)
     fig.update_layout(
-        title=dict(
-            text='수면 상세 분석',
-            font=dict(size=16, color='white', family='NanumGothic, sans-serif')
-        ),
+        title='수면 상세 분석' if show_title else '',
         xaxis=dict(visible=False),  # X축 숨김
         yaxis=dict(
             tickfont=dict(size=10, color='white'),
