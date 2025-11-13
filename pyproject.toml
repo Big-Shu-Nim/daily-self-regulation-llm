@@ -252,17 +252,17 @@ cmd = "poetry run python -m tools.run_rag_query --interactive --verbose"
 
 [tool.poe.tasks.chatbot]
 help = "Launch the Streamlit chatbot frontend. e.g. poe chatbot"
-cmd = "poetry run streamlit run llm_engineering/application/rag/streamlit_app.py"
+cmd = "poetry run streamlit run llm_engineering/application/rag/streamlit_app.py --server.address 0.0.0.0 --server.port 8501"
 env = { PYTHONPATH = "${PWD}" }
 
 [tool.poe.tasks.daily-report]
 help = "Launch the daily activity report dashboard. e.g. poe daily-report"
-cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_daily_report.py"
+cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_daily_report.py --server.address 0.0.0.0 --server.port 8504"
 env = { PYTHONPATH = "${PWD}" }
 
 [tool.poe.tasks.public-dashboard]
 help = "Launch the public activity report dashboard (privacy-protected). e.g. poe public-dashboard"
-cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_public_dashboard.py"
+cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_public_dashboard.py --server.address 0.0.0.0 --server.port 8502"
 env = { PYTHONPATH = "${PWD}" }
 
 # In-Context Feedback Services

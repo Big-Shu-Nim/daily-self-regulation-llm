@@ -33,97 +33,114 @@ RAG를 활용해 하루를 추적하고,
 
 ---
 
-## 🚀 시작하기
+## 🔄 시스템 파이프라인
 
-로컬 개발 환경을 설정하고 데이터 크롤러를 실행하는 방법은 다음과 같습니다.
+### 전체 아키텍처
 
-### 1. 개발 환경 설정
-
-이 프로젝트는 `pyenv`를 사용하여 파이썬 버전을 관리하고, `poetry`를 사용하여 의존성을 관리합니다.
-
-**1.1. `pyenv` 설치 및 설정:**
-
-사용하시는 운영체제에 맞춰 공식 `pyenv` 설치 가이드를 따라 설치를 진행합니다. 설치가 완료되면, 이 프로젝트를 위한 로컬 파이썬 버전을 설정합니다.
-
-```bash
-# 필요한 파이썬 버전 설치 (이미 설치되어 있다면 생략)
-pyenv install 3.11
-
-# 현재 프로젝트 디렉토리에 로컬 파이썬 버전 설정
-pyenv local 3.11
+```
+┌─────────────────┐
+│  Data Sources   │
+├─────────────────┤
+│ 📅 Calendar     │
+│ 📝 Notion       │
+│ 📰 Naver Blog   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   Crawlers      │  ← Selenium/API 기반 데이터 수집
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   MongoDB       │  ← Raw 데이터 저장
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Preprocessing  │  ← 카테고리 분류, Agency 매핑
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Cleaned MongoDB │  ← 전처리된 데이터
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  📊 Streamlit Dashboard         │
+│                                 │
+│  ┌─────────────────────────┐   │
+│  │  Interactive Charts     │   │
+│  │  (Plotly)               │   │
+│  └─────────────────────────┘   │
+│              │                  │
+│              ▼                  │
+│  ┌─────────────────────────┐   │
+│  │  🤖 LLM Feedback        │   │
+│  │  (In-Context Learning)  │   │
+│  │                         │   │
+│  │  • Daily Summary        │◄──┼── GPT4o-mini API
+│  │  • Goal Analysis        │   │   (Temperature: 0.7)
+│  │  • Balance Check        │   │
+│  │  • Actionable Advice    │   │
+│  └─────────────────────────┘   │
+└─────────────────────────────────┘
 ```
 
-### 1.2. `poetry` 설치 및 의존성 해결:
+### 주요 프로세스
 
-`poetry`가 설치되어 있지 않다면, 공식 가이드를 따라 설치합니다. 그 후, 프로젝트 의존성을 설치합니다.
+#### 1️⃣ 데이터 수집 (Crawlers)
+- **Calendar**: Apple Calendar .xlsx 파일 파싱
+- **Notion**: Notion API를 통한 데이터베이스/페이지 크롤링
+- **Naver Blog**: Selenium 기반 블로그 포스트 수집
 
-```bash
-# poetry가 프로젝트 폴더 내에 가상환경을 만들도록 설정하는 것을 권장합니다.
-poetry config virtualenvs.in-project true
+#### 2️⃣ 데이터 전처리 (Preprocessing)
+- **카테고리 자동 분류**: 이벤트명/메모 기반 카테고리 할당
+- **Agency 매핑**: 일/생산, 학습/성장, 재충전, 일상관리, Drain
+- **태그 추출**: #인간관계, #즉시만족 등 특수 태그 감지
+- **시간 정규화**: 날짜별 이벤트 집계 및 지속시간 계산
 
-# 의존성 설치
-poetry install
-```
+#### 3️⃣ 시각화 (Dashboard)
+- **Plotly 기반 인터랙티브 차트**
+- **Agency 파이차트**: 영역별 시간 분포
+- **카테고리 분석**: 운동, 독서, 코딩 등 상세 분류
+- **5개 영역 상세 분석**: 이벤트별 집중 시간 및 메모 확인
 
-### 1.3. `.env` 파일 설정
+---
 
-프로젝트를 실행하려면 루트 디렉토리에 `.env` 파일을 생성하고 필요한 환경 변수를 설정해야 합니다.
+## 📊 시각화 대시보드
 
-```bash
-# .env 파일 예시
-NOTION_API_KEY="your_notion_api_key"
-DATABASE_HOST="your_mongodb_connection_string"
+### 🌐 Live Demo
+**Public Dashboard**: [http://34.63.195.29:8502](http://34.63.195.29:8502)
 
-# 기타 필요한 API 키들
-GEMINI_API_KEY="your_gemini_api_key"
-OPENAI_API_KEY="your_openai_api_key"
-```
+> ⚠️ **참고**: 현재는 systemd 서비스로 직접 배포 중이며, Docker 컨테이너화는 진행 중입니다.
 
-- **`NOTION_API_KEY`**: Notion API에 접근하기 위한 통합 시크릿 키입니다.
-- **`DATABASE_HOST`**: MongoDB 데이터베이스 연결을 위한 전체 URI입니다. (예: `mongodb+srv://...`) 클라우드 DB 사용 시 이 변수를 필수로 설정해야 합니다.
+### 주요 기능
 
-### 2. 로컬 인프라 실행
+#### 📈 일별 활동 리포트
+- **전체 통계**: 총 기록 시간, 활동 수, #인간관계, #즉시만족 집계
+- **Agency 파이차트**: 5개 영역 시간 분포 시각화
+- **카테고리별 시간 분포**: 세부 카테고리별 시간 분석 (% 표시)
+- **수면 상세 분석**: 수면 이벤트별 시간 및 메모
 
-이 프로젝트는 MongoDB와 같은 로컬 인프라가 실행되어야 합니다. 아래의 `poe` 명령어를 사용하여 인프라를 시작하세요.
+#### 🎯 5개 영역 상세 분석
+1. **💼 일/생산**: 이벤트별 집중 시간 (업무 태그 포함)
+2. **📚 학습/성장**: 학습 방법 및 목표별 분석
+3. **🌴 재충전**: 기본/소셜 재충전 분류 (#인간관계 태그)
+4. **⚠️ Drain**: 비생산적 활동 추적 (#즉시만족)
+5. **🏠 일상 관리**: 일상 유지 활동 (식사, 청소 등)
 
-```bash
-poe local-infrastructure-up
-```
-이 명령어는 Docker Compose를 사용하여 필요한 서비스들을 시작하고 ZenML 서버를 설정합니다.
+#### 💡 Interactive 차트
+- **호버 시 상세 정보**: 메모, 태그, 정확한 시간
+- **비율 표시**: 하루 기준 퍼센티지
+- **이벤트별 분석**: Top 15 이벤트 시각화
 
-### 3. 크롤러 실행하기
+---
 
-이제 `poe crawl-*` 명령어를 사용하여 다양한 소스로부터 데이터를 수집할 수 있습니다. 이 명령어들은 사용자의 이름(first name, last name)을 필수로 요구합니다.
+## 🚀 Quick Start
 
-**3.1. 네이버 크롤러**
+상세한 개발 환경 설정 및 크롤러 실행 방법은 [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)를 참고하세요.
 
-네이버 블로그를 크롤링하려면 블로그 ID를 제공해야 합니다.
 
-```bash
-poe crawl-naver --first-name '이름' --last-name '성' -- --blog-id '네이버_블로그_ID'
-
-# 예시:
-poe crawl-naver --first-name 'Eddie' --last-name 'Yun' -- --blog-id 'eddieyun6'
-```
-
-**3.2. 캘린더 크롤러**
-
-이 크롤러는 로컬 캘린더 파일(.xlsx)을 처리합니다. 기본 경로는 이미 설정되어 있습니다.
-
-```bash
-poe crawl-calendar --first-name '이름' --last-name '성'
-
-# 예시:
-poe crawl-calendar --first-name 'Eddie' --last-name 'Yun'
-```
-
-**3.3. 노션 크롤러**
-
-이 명령어는 사용자와 연결된 노션 페이지를 크롤링합니다.
-
-```bash
-poe crawl-notion --first-name '이름' --last-name '성'
-
-# 예시:
-poe crawl-notion --first-name 'Eddie' --last-name 'Yun'
 ```
