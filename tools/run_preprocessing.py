@@ -24,6 +24,7 @@ import pandas as pd
 from pydantic import UUID4
 from llm_engineering.domain.documents import (
     CalendarDocument,
+    GoogleCalendarDocument,
     NotionPageDocument,
     NaverPostDocument
 )
@@ -131,6 +132,27 @@ def load_raw_data(incremental: bool = True):
         print(f"❌ Calendar 로드 실패: {e}")
         df_calendar = pd.DataFrame()
 
+    # Google Calendar 데이터 로드
+    try:
+        google_calendar_docs = GoogleCalendarDocument.bulk_find(is_deleted=False)
+        df_google_calendar = pd.DataFrame([doc.model_dump() for doc in google_calendar_docs])
+        total_google_calendar = len(df_google_calendar)
+
+        if incremental and not df_google_calendar.empty:
+            # Google Calendar도 CleanedCalendarDocument 사용 (platform으로 구분)
+            processed_map = get_processed_document_map(CleanedCalendarDocument)
+            df_google_calendar = filter_documents_to_process(
+                df_google_calendar,
+                processed_map,
+                time_column='last_synced_at'  # Google Calendar는 last_synced_at 사용
+            )
+            print(f"✅ Google Calendar: {len(df_google_calendar)}건 처리 필요 (전체 {total_google_calendar}건)")
+        else:
+            print(f"✅ Google Calendar: {len(df_google_calendar)}건 로드")
+    except Exception as e:
+        print(f"❌ Google Calendar 로드 실패: {e}")
+        df_google_calendar = pd.DataFrame()
+
     # Notion 데이터 로드
     try:
         notion_docs = NotionPageDocument.bulk_find()
@@ -173,10 +195,10 @@ def load_raw_data(incremental: bool = True):
         df_naver = pd.DataFrame()
 
     print()
-    return df_calendar, df_notion, df_naver
+    return df_calendar, df_google_calendar, df_notion, df_naver
 
 
-def preprocess_data(df_calendar, df_notion, df_naver):
+def preprocess_data(df_calendar, df_google_calendar, df_notion, df_naver):
     """데이터를 전처리합니다."""
     print("="*70)
     print("2. 데이터 전처리 중...")
@@ -192,6 +214,7 @@ def preprocess_data(df_calendar, df_notion, df_naver):
                 {"old": "유지 / 정리", "new": "이동", "before_date": "2025-09-27"}
             ]
         },
+        "google_calendar": {},  # Google Calendar는 간소화된 전처리 (설정 불필요)
         "naver": {
             "filter_categories": ["일일피드백"]
         }
@@ -201,6 +224,7 @@ def preprocess_data(df_calendar, df_notion, df_naver):
     all_cleaned = dispatcher.preprocess_all(
         {
             "calendar": df_calendar,
+            "google_calendar": df_google_calendar,
             "notion": df_notion,
             "naver": df_naver
         },
@@ -257,6 +281,17 @@ def save_cleaned_documents(cleaned_data):
             calendar_docs = prepare_docs_for_upsert(CleanedCalendarDocument, calendar_docs)
             result = CleanedCalendarDocument.bulk_upsert(calendar_docs, match_field="_id")
             print(f"✅ Calendar: {len(calendar_docs)}건 처리 "
+                  f"(수정: {result['modified']}, 신규: {result['upserted']})")
+
+    # Google Calendar (CleanedCalendarDocument 공유 사용, platform으로 구분)
+    if cleaned_data.get("google_calendar"):
+        google_calendar_docs = [
+            CleanedCalendarDocument(**doc) for doc in cleaned_data["google_calendar"]
+        ]
+        if google_calendar_docs:
+            google_calendar_docs = prepare_docs_for_upsert(CleanedCalendarDocument, google_calendar_docs)
+            result = CleanedCalendarDocument.bulk_upsert(google_calendar_docs, match_field="_id")
+            print(f"✅ Google Calendar: {len(google_calendar_docs)}건 처리 "
                   f"(수정: {result['modified']}, 신규: {result['upserted']})")
 
     # Notion
@@ -359,10 +394,10 @@ def main():
     print("="*70 + "\n")
 
     # 1. 원본 데이터 로드 (증분 처리 옵션)
-    df_calendar, df_notion, df_naver = load_raw_data(incremental=incremental)
+    df_calendar, df_google_calendar, df_notion, df_naver = load_raw_data(incremental=incremental)
 
     # 2. 전처리
-    cleaned_data = preprocess_data(df_calendar, df_notion, df_naver)
+    cleaned_data = preprocess_data(df_calendar, df_google_calendar, df_notion, df_naver)
 
     # 3. 샘플 출력
     print_sample_documents(cleaned_data)

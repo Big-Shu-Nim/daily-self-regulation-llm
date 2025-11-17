@@ -10,6 +10,7 @@ import pandas as pd
 
 from .base import BasePreprocessor
 from .calendar import CalendarPreprocessor
+from .google_calendar import GoogleCalendarPreprocessor
 from .notion import NotionPreprocessor
 from .naver import NaverPreprocessor
 
@@ -17,6 +18,7 @@ from .naver import NaverPreprocessor
 # Preprocessor 레지스트리
 PREPROCESSOR_REGISTRY: Dict[str, Type[BasePreprocessor]] = {
     "calendar": CalendarPreprocessor,
+    "google_calendar": GoogleCalendarPreprocessor,
     "notion": NotionPreprocessor,
     "naver": NaverPreprocessor,
 }
