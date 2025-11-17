@@ -91,3 +91,31 @@ class CalendarDocument(Document):
     class Settings:
         name = DataCategory.CALENDAR
 
+
+class GoogleCalendarDocument(Document):
+    """
+    Represents a Google Calendar event retrieved via API.
+    Similar to CalendarDocument but uses Google Calendar API.
+    """
+    content: dict  # {"title": str, "notes": str}
+
+    # Google Calendar specific fields
+    start_datetime: datetime
+    end_datetime: datetime
+    calendar_name: str
+    sub_category: str | None = None
+    duration_minutes: int
+
+    # Google Calendar API specific
+    google_event_id: str  # Google Calendar event ID
+    google_calendar_id: str  # Google Calendar ID
+
+    # Sync metadata
+    last_synced_at: datetime = Field(default_factory=datetime.utcnow)
+    is_deleted: bool = False  # Soft delete flag
+
+    platform: str = "google_calendar"
+
+    class Settings:
+        name = DataCategory.GOOGLE_CALENDAR
+

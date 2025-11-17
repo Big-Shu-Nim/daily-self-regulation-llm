@@ -189,7 +189,14 @@ zenml/
 notebooks/
 
 # claude
-CLAUDE.md 
+CLAUDE.md
 project_prompt.md
 LLM-Engineers-Handbook-Reference/
+
+# Privacy filter config (do not commit)
+privacy_filter_config.json
+
+# Google Calendar API credentials (do not commit)
+credentials.json
+token.json
 

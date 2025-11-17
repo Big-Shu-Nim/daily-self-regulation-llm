@@ -52,6 +52,9 @@ google-generativeai = "^0.8.5"
 rank-bm25 = "^0.2.2"
 streamlit = "^1.39.0"
 plotly = "^5.24.0"
+google-auth-oauthlib = "^1.2.3"
+google-auth-httplib2 = "^0.2.1"
+google-api-python-client = "^2.187.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -97,6 +100,14 @@ args = [
 [tool.poe.tasks.crawl-notion]
 help = "Run the Notion crawler. e.g. poe crawl-notion --first-name Eddie --last-name Yun"
 cmd = "poetry run python -m tools.run_crawler --name notion --user-first-name $first_name --user-last-name $last_name"
+args = [
+    {name = "first_name", options = ["--first-name"], help = "User's first name"},
+    {name = "last_name", options = ["--last-name"], help = "User's last name"},
+]
+
+[tool.poe.tasks.crawl-google-calendar]
+help = "Run the Google Calendar crawler. e.g. poe crawl-google-calendar --first-name Eddie --last-name Yun"
+cmd = "poetry run python -m tools.run_crawler --name google_calendar --user-first-name $first_name --user-last-name $last_name"
 args = [
     {name = "first_name", options = ["--first-name"], help = "User's first name"},
     {name = "last_name", options = ["--last-name"], help = "User's last name"},

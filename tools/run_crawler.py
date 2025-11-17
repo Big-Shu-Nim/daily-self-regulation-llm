@@ -6,7 +6,7 @@ from loguru import logger
 from llm_engineering.application.crawlers.dispatcher import CrawlerDispatcher
 
 @click.command()
-@click.option("--name", required=True, type=click.Choice(["calendar", "naver", "notion"]), help="The name of the crawler to run.")
+@click.option("--name", required=True, type=click.Choice(["calendar", "google_calendar", "naver", "notion"]), help="The name of the crawler to run.")
 # --- User options (now required) ---
 @click.option("--user-first-name", required=True, help="User's first name.")
 @click.option("--user-last-name", required=True, help="User's last name.")
@@ -14,6 +14,8 @@ from llm_engineering.application.crawlers.dispatcher import CrawlerDispatcher
 @click.option("--blog-id", help="Naver Blog ID (for naver crawler).")
 @click.option("--max-pages", type=int, help="Max pages to crawl for Naver blog.")
 @click.option("--directory-path", default="llm_engineering/application/crawlers/data", help="Directory path for calendar .xlsx files.")
+@click.option("--calendar-id", help="Google Calendar ID (for google_calendar crawler). If not specified, all calendars will be crawled.")
+@click.option("--max-results", type=int, default=2500, help="Max results for Google Calendar API (for google_calendar crawler).")
 
 def main(name: str, user_first_name: str, user_last_name: str, **kwargs):
     """

@@ -5,12 +5,14 @@ from loguru import logger
 from llm_engineering.domain.documents import UserDocument
 from .base import BaseCrawler
 from .calendar import CalendarCrawler
+from .google_calendar import GoogleCalendarCrawler
 from .naver import NaverCrawler
 from .notion import NotionCrawler
 
 # 실행할 크롤러의 '이름'과 '클래스'를 매핑하는 레지스트리
 CRAWLER_REGISTRY = {
     "calendar": CalendarCrawler,
+    "google_calendar": GoogleCalendarCrawler,
     "naver": NaverCrawler,
     "notion": NotionCrawler,
 }

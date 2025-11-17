@@ -150,7 +150,7 @@ class NoSQLBaseDocument(BaseModel, Generic[T], ABC):
         Returns:
             dict with counts: {"matched": int, "modified": int, "upserted": int}
         """
-        from pymongo import ReplaceOne
+        from pymongo import UpdateOne
 
         collection = _database[cls.get_collection_name()]
 
@@ -162,7 +162,16 @@ class NoSQLBaseDocument(BaseModel, Generic[T], ABC):
             for doc in documents:
                 doc_data = doc.to_mongo(**kwargs)
                 filter_dict = {match_field: doc_data.get(match_field)}
-                operations.append(ReplaceOne(filter_dict, doc_data, upsert=True))
+
+                # _id를 제외한 필드만 업데이트 ($setOnInsert로 _id는 insert시에만 설정)
+                update_data = {k: v for k, v in doc_data.items() if k != "_id"}
+                update_dict = {"$set": update_data}
+
+                # insert 시에만 _id 설정 (기존 문서가 있으면 _id 유지)
+                if "_id" in doc_data:
+                    update_dict["$setOnInsert"] = {"_id": doc_data["_id"]}
+
+                operations.append(UpdateOne(filter_dict, update_dict, upsert=True))
 
             result = collection.bulk_write(operations, ordered=False)
 
