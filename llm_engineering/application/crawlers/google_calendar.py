@@ -5,6 +5,7 @@ Google Calendar API를 사용하여 캘린더 이벤트를 실시간으로 크�
 """
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from loguru import logger
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -100,19 +101,26 @@ class GoogleCalendarCrawler(BaseCrawler):
 
     def _parse_datetime(self, event_time: dict) -> datetime:
         """
-        Google Calendar API의 datetime 또는 date 형식을 파싱
+        Google Calendar API의 datetime 또는 date 형식을 파싱하여 한국 시간(Asia/Seoul) 기준 naive datetime 반환
 
         Args:
             event_time: {'dateTime': 'ISO 8601', 'timeZone': ...} 또는 {'date': 'YYYY-MM-DD'}
 
         Returns:
-            datetime 객체
+            한국 시간 기준 naive datetime 객체
         """
         if 'dateTime' in event_time:
             # ISO 8601 형식: 2024-11-14T10:00:00+09:00
-            return datetime.fromisoformat(event_time['dateTime'])
+            dt_aware = datetime.fromisoformat(event_time['dateTime'])
+
+            # 한국 시간(Asia/Seoul)으로 변환
+            korea_tz = ZoneInfo("Asia/Seoul")
+            dt_korea = dt_aware.astimezone(korea_tz)
+
+            # Naive datetime으로 변환 (timezone 정보 제거, 한국 시간 유지)
+            return dt_korea.replace(tzinfo=None)
         elif 'date' in event_time:
-            # 종일 이벤트: 2024-11-14
+            # 종일 이벤트: 2024-11-14 (이미 날짜만 있으므로 한국 시간 기준으로 해석)
             return datetime.strptime(event_time['date'], '%Y-%m-%d')
         else:
             raise ValueError(f"Invalid event time format: {event_time}")
