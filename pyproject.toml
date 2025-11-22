@@ -48,13 +48,13 @@ opik = "^0.2.2"
 openpyxl = "^3.1.5"
 python-dotenv = "^1.1.1"
 pandas = "^2.3.3"
-google-generativeai = "^0.8.5"
 rank-bm25 = "^0.2.2"
 streamlit = "^1.39.0"
 plotly = "^5.24.0"
 google-auth-oauthlib = "^1.2.3"
 google-auth-httplib2 = "^0.2.1"
 google-api-python-client = "^2.187.0"
+google-generativeai = "^0.8.5"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -274,6 +274,11 @@ env = { PYTHONPATH = "${PWD}" }
 [tool.poe.tasks.public-dashboard]
 help = "Launch the public activity report dashboard (privacy-protected). e.g. poe public-dashboard"
 cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_public_dashboard.py --server.address 0.0.0.0 --server.port 8502"
+env = { PYTHONPATH = "${PWD}" }
+
+[tool.poe.tasks.experiment-dashboard]
+help = "Launch the experiment dashboard (model testing, privacy toggle). e.g. poe experiment-dashboard"
+cmd = "poetry run streamlit run llm_engineering/application/visualization/streamlit_experiment_dashboard.py --server.address 0.0.0.0 --server.port 8503"
 env = { PYTHONPATH = "${PWD}" }
 
 # In-Context Feedback Services

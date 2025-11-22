@@ -106,9 +106,19 @@ class BaseFeedbackGenerator(ABC):
         if not docs:
             return f"## {title}\n\n해당 기간의 데이터를 찾을 수 없습니다.\n"
 
+        # Calendar 문서를 시간순으로 정렬
+        # ref_date만으로는 같은 날짜 내 시간 정보가 없으므로 start_datetime 사용
+        sorted_docs = sorted(
+            docs,
+            key=lambda x: (
+                x.get("ref_date", ""),
+                x.get("metadata", {}).get("start_datetime", "")
+            )
+        )
+
         parts = [f"## {title}", ""]
 
-        for doc in docs:
+        for doc in sorted_docs:
             parts.append(self._format_document(doc, include_metadata))
             parts.append("")  # 문서 간 구분
 
