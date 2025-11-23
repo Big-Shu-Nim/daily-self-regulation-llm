@@ -294,6 +294,38 @@ cmd = "poetry run python tools/run_feedback.py weekly"
 help = "Generate monthly feedback. e.g. poe feedback-monthly --year 2025 --month 10"
 cmd = "poetry run python tools/run_feedback.py monthly"
 
+# ===========================================
+# Pipelines (크롤링 + 전처리 + 임베딩 통합)
+# ===========================================
+
+[tool.poe.tasks.pipeline-etl]
+help = "Run ETL pipeline (crawling + preprocessing). e.g. poe pipeline-etl --first-name Eddie --last-name Yun"
+cmd = "poetry run python -m tools.run --run-etl --first-name $first_name --last-name $last_name"
+args = [
+    {name = "first_name", options = ["--first-name"], help = "User's first name", required = true},
+    {name = "last_name", options = ["--last-name"], help = "User's last name", required = true},
+]
+
+[tool.poe.tasks.pipeline-end-to-end]
+help = "Run End-to-End pipeline (crawling + preprocessing + embedding). e.g. poe pipeline-end-to-end --first-name Eddie --last-name Yun"
+cmd = "poetry run python -m tools.run --run-end-to-end --first-name $first_name --last-name $last_name"
+args = [
+    {name = "first_name", options = ["--first-name"], help = "User's first name", required = true},
+    {name = "last_name", options = ["--last-name"], help = "User's last name", required = true},
+]
+
+[tool.poe.tasks.pipeline-preprocessing]
+help = "Run preprocessing step only (incremental by default)"
+cmd = "poetry run python -m tools.run --run-preprocessing"
+
+[tool.poe.tasks.pipeline-embedding]
+help = "Run embedding step only. e.g. poe pipeline-embedding --source calendar"
+cmd = "poetry run python -m tools.run --run-embedding"
+
+[tool.poe.tasks.run-pipeline]
+help = "Run pipelines with custom options. e.g. poe run-pipeline --run-etl --first-name Eddie --last-name Yun --skip-notion"
+cmd = "poetry run python -m tools.run"
+
 # Tests
 [tool.poe.tasks.test]
 cmd = "poetry run pytest tests/"
