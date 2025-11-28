@@ -16,7 +16,7 @@ from llm_engineering.domain.feedback_documents import WeeklyFeedbackDocument
 from llm_engineering.settings import Settings
 from ..base import BaseFeedbackGenerator
 from ..document_loader import DocumentLoader
-from .prompts import WEEKLY_FEEDBACK_PROMPT
+from .prompts import WEEKLY_FEEDBACK_PROMPT, WEEKLY_FEEDBACK_PROMPT_V2, get_weekly_prompt
 
 # Load settings singleton
 settings = Settings.load_settings()
@@ -36,6 +36,7 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
         self,
         model_id: Optional[str] = None,
         temperature: float = 0.7,
+        prompt_style: str = "original",
     ):
         """
         Initialize the weekly feedback generator.
@@ -43,11 +44,15 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
         Args:
             model_id: LLM model ID
             temperature: LLM temperature
+            prompt_style: 프롬프트 스타일 ("original", "v2", "v3")
         """
         super().__init__(model_id, temperature)
-        self.system_prompt = WEEKLY_FEEDBACK_PROMPT
+        self.prompt_style = prompt_style
+        # V3는 두 단계로 나뉘므로 초기 프롬프트는 필요 없음
+        if prompt_style != "v3":
+            self.system_prompt = get_weekly_prompt(prompt_style)
 
-        logger.info("WeeklyFeedbackGenerator initialized")
+        logger.info(f"WeeklyFeedbackGenerator initialized (style={prompt_style})")
 
     def generate(
         self,
@@ -57,6 +62,7 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
         include_past_reports: bool = True,
         past_reports_limit: int = 4,
         additional_context: Optional[str] = None,
+        precomputed_metrics: Optional[dict] = None,
         save_to_db: bool = False,
     ) -> str:
         """
@@ -69,6 +75,7 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
             include_past_reports: 과거 주간 리포트 포함 여부
             past_reports_limit: 과거 주간 리포트 최대 개수
             additional_context: 추가 컨텍스트 (선택사항)
+            precomputed_metrics: 사전 계산된 메트릭 (V2 프롬프트용)
 
         Returns:
             생성된 주간 피드백 문자열
@@ -79,7 +86,7 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
             end_dt = start_dt + timedelta(days=6)
             end_date = end_dt.strftime("%Y-%m-%d")
 
-        logger.info(f"Generating weekly feedback for {start_date} ~ {end_date}")
+        logger.info(f"Generating weekly feedback for {start_date} ~ {end_date} (style={self.prompt_style})")
 
         # 1. 7일 데이터 로드
         weekly_docs = DocumentLoader.load_by_date_range(
@@ -100,24 +107,10 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
                 limit=past_reports_limit,
             )
 
-        # 3. 컨텍스트 포맷팅
-        context = self._format_weekly_context(
-            start_date, end_date, weekly_docs, past_reports
-        )
-
-        if additional_context:
-            context += f"\n\n## 추가 컨텍스트\n{additional_context}"
-
-        # 4. 통계 로깅
+        # 3. 통계 로깅
         self._log_statistics(start_date, end_date, weekly_docs, past_reports)
 
-        # 5. LLM 호출
-        prompt = ChatPromptTemplate.from_messages(
-            [("system", self.system_prompt), ("human", "{context}")]
-        )
-
-        chain = prompt | self.llm
-
+        # 4. 프롬프트 스타일에 따른 처리
         try:
             # LangSmith 추적 활성화
             if settings.LANGCHAIN_TRACING_V2 and settings.LANGCHAIN_API_KEY:
@@ -127,8 +120,35 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
                 os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
                 os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT
 
-            response = chain.invoke({"context": context})
-            feedback = response.content
+            if self.prompt_style == "v3":
+                # V3: 2단계 체인 (JSON → Report)
+                if not precomputed_metrics:
+                    raise ValueError("V3 스타일은 precomputed_metrics가 필수입니다")
+
+                feedback = self._generate_v3_two_step(
+                    start_date, end_date, weekly_docs, past_reports, precomputed_metrics
+                )
+            elif self.prompt_style in ["v2", "v2_public"] and precomputed_metrics:
+                # V2/V2_PUBLIC: 사전 계산된 메트릭 사용 - ChatPromptTemplate 우회 (JSON 중괄호 충돌 방지)
+                from langchain_core.messages import HumanMessage
+                formatted_prompt = self._format_v2_context(
+                    start_date, end_date, weekly_docs, past_reports, precomputed_metrics
+                )
+                response = self.llm.invoke([HumanMessage(content=formatted_prompt)])
+                feedback = response.content
+            else:
+                # Original/Public: 기존 방식
+                context = self._format_weekly_context(
+                    start_date, end_date, weekly_docs, past_reports
+                )
+                if additional_context:
+                    context += f"\n\n## 추가 컨텍스트\n{additional_context}"
+                prompt = ChatPromptTemplate.from_messages(
+                    [("system", self.system_prompt), ("human", "{context}")]
+                )
+                chain = prompt | self.llm
+                response = chain.invoke({"context": context})
+                feedback = response.content
 
             logger.info(
                 f"Weekly feedback generated successfully ({len(feedback)} chars)"
@@ -138,6 +158,68 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
         except Exception as e:
             logger.error(f"Error generating weekly feedback: {e}")
             raise
+
+    def _format_v2_context(
+        self,
+        start_date: str,
+        end_date: str,
+        weekly_docs: list[dict],
+        past_reports: list[dict],
+        precomputed_metrics: dict,
+    ) -> str:
+        """
+        V2 프롬프트용 컨텍스트를 포맷팅합니다.
+        사전 계산된 메트릭을 포함합니다.
+
+        Args:
+            start_date: 주 시작 날짜
+            end_date: 주 종료 날짜
+            weekly_docs: 이번 주 데이터
+            past_reports: 과거 주간 리포트
+            precomputed_metrics: 사전 계산된 메트릭
+
+        Returns:
+            포맷팅된 V2 컨텍스트 문자열
+        """
+        import json
+
+        # 메트릭 포맷팅
+        metrics_str = json.dumps(precomputed_metrics, ensure_ascii=False, indent=2)
+
+        # Raw logs 포맷팅 (간략화)
+        raw_logs_parts = []
+        if weekly_docs:
+            docs_by_date = self._group_by_date(weekly_docs)
+            for date in sorted(docs_by_date.keys()):
+                day_docs = docs_by_date[date]
+                day_name = self._get_day_name(date)
+                raw_logs_parts.append(f"### {date} ({day_name})")
+                for doc in day_docs:
+                    raw_logs_parts.append(self._format_document(doc))
+                raw_logs_parts.append("")
+        raw_logs_str = "\n".join(raw_logs_parts) if raw_logs_parts else "데이터 없음"
+
+        # 이전 주 요약
+        prev_summary_parts = []
+        if past_reports:
+            # 가장 최근 1개만 사용
+            latest_report = past_reports[0]
+            week_start = latest_report.get("metadata", {}).get("week_start_date", "N/A")
+            week_end = latest_report.get("metadata", {}).get("week_end_date", "N/A")
+            prev_summary_parts.append(f"### 지난 주: {week_start} ~ {week_end}")
+            prev_summary_parts.append(latest_report.get("content", "")[:2000])  # 최대 2000자
+        prev_summary_str = "\n".join(prev_summary_parts) if prev_summary_parts else "없음"
+
+        # V2 프롬프트에 값 채우기
+        formatted_prompt = self.system_prompt.format(
+            start_date=start_date,
+            end_date=end_date,
+            precomputed_metrics=metrics_str,
+            raw_logs=raw_logs_str,
+            previous_week_summary=prev_summary_str,
+        )
+
+        return formatted_prompt
 
     def _format_weekly_context(
         self,
@@ -288,3 +370,268 @@ class WeeklyFeedbackGenerator(BaseFeedbackGenerator):
         stats["by_date"] = {date: len(docs) for date, docs in docs_by_date.items()}
 
         logger.info(f"Weekly statistics: {stats}")
+
+    def _generate_v3_two_step(
+        self,
+        start_date: str,
+        end_date: str,
+        weekly_docs: list[dict],
+        past_reports: list[dict],
+        precomputed_metrics: dict,
+    ) -> str:
+        """
+        V3 스타일: 2단계 체인으로 피드백 생성.
+
+        Step 1: JSON Summary 생성
+        Step 2: JSON을 기반으로 서술형 리포트 생성
+
+        Args:
+            start_date: 주 시작 날짜
+            end_date: 주 종료 날짜
+            weekly_docs: 이번 주 데이터
+            past_reports: 과거 주간 리포트
+            precomputed_metrics: 사전 계산된 메트릭
+
+        Returns:
+            서술형 리포트 + JSON 조합 문자열
+        """
+        import json
+        import re
+        from langchain_core.messages import HumanMessage
+
+        logger.info("V3: Starting Step 1 - Generating JSON summary")
+
+        # Step 1: JSON 생성
+        step1_prompt = get_weekly_prompt("v3_step1")
+        step1_formatted = self._format_v3_step1_context(
+            start_date, end_date, weekly_docs, past_reports, precomputed_metrics, step1_prompt
+        )
+        step1_response = self.llm.invoke([HumanMessage(content=step1_formatted)])
+        json_text = step1_response.content
+
+        logger.info(f"V3 Step 1 completed ({len(json_text)} chars)")
+
+        # JSON 파싱 (```json ... ``` 블록 또는 순수 JSON 추출)
+        json_summary = self._extract_json(json_text)
+
+        if not json_summary:
+            logger.error("Failed to extract valid JSON from Step 1")
+            raise ValueError("Step 1에서 유효한 JSON을 추출하지 못했습니다")
+
+        logger.info("V3: Starting Step 2 - Generating report from JSON")
+
+        # Step 2: 리포트 생성
+        step2_prompt = get_weekly_prompt("v3_step2")
+        step2_formatted = step2_prompt.format(
+            json_summary=json_summary,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        step2_response = self.llm.invoke([HumanMessage(content=step2_formatted)])
+        report_text = step2_response.content
+
+        logger.info(f"V3 Step 2 completed ({len(report_text)} chars)")
+
+        # JSON을 로그에만 남기고, 사용자에게는 리포트만 반환
+        logger.debug(f"Step 1 JSON Summary:\n{json_summary}")
+
+        # 최종 결과: 리포트만 (JSON은 LangSmith에서 확인 가능)
+        return report_text
+
+    def _format_v3_step1_context(
+        self,
+        start_date: str,
+        end_date: str,
+        weekly_docs: list[dict],
+        past_reports: list[dict],
+        precomputed_metrics: dict,
+        prompt_template: str,
+    ) -> str:
+        """
+        V3 Step 1 프롬프트용 컨텍스트를 포맷팅합니다.
+
+        Args:
+            start_date: 주 시작 날짜
+            end_date: 주 종료 날짜
+            weekly_docs: 이번 주 데이터
+            past_reports: 과거 주간 리포트
+            precomputed_metrics: 사전 계산된 메트릭
+            prompt_template: Step 1 프롬프트 템플릿
+
+        Returns:
+            포맷팅된 프롬프트 문자열
+        """
+        import json
+
+        # 메트릭 포맷팅
+        metrics_str = json.dumps(precomputed_metrics, ensure_ascii=False, indent=2)
+
+        # Raw logs 포맷팅 (간략화)
+        raw_logs_parts = []
+        if weekly_docs:
+            docs_by_date = self._group_by_date(weekly_docs)
+            for date in sorted(docs_by_date.keys()):
+                day_docs = docs_by_date[date]
+                day_name = self._get_day_name(date)
+                raw_logs_parts.append(f"### {date} ({day_name})")
+                for doc in day_docs:
+                    raw_logs_parts.append(self._format_document(doc))
+                raw_logs_parts.append("")
+        raw_logs_str = "\n".join(raw_logs_parts) if raw_logs_parts else "데이터 없음"
+
+        # 이전 주 요약
+        prev_summary_parts = []
+        if past_reports:
+            # 가장 최근 1개만 사용
+            latest_report = past_reports[0]
+            week_start = latest_report.get("metadata", {}).get("week_start_date", "N/A")
+            week_end = latest_report.get("metadata", {}).get("week_end_date", "N/A")
+            prev_summary_parts.append(f"### 지난 주: {week_start} ~ {week_end}")
+            prev_summary_parts.append(latest_report.get("content", "")[:2000])  # 최대 2000자
+        prev_summary_str = "\n".join(prev_summary_parts) if prev_summary_parts else "없음"
+
+        # 프롬프트에 값 채우기
+        formatted_prompt = prompt_template.format(
+            start_date=start_date,
+            end_date=end_date,
+            precomputed_metrics=metrics_str,
+            raw_logs=raw_logs_str,
+            previous_week_summary=prev_summary_str,
+        )
+
+        return formatted_prompt
+
+    def _extract_json(self, text: str) -> str:
+        """
+        텍스트에서 JSON을 추출합니다.
+
+        ```json ... ``` 블록이나 순수 JSON을 찾아 파싱 검증합니다.
+
+        Args:
+            text: JSON을 포함한 텍스트
+
+        Returns:
+            추출된 JSON 문자열 (파싱 검증됨) 또는 빈 문자열
+        """
+        import json
+        import re
+
+        logger.debug(f"Extracting JSON from text (length: {len(text)})")
+
+        # 1. ```json ... ``` 블록 찾기 (가장 일반적)
+        json_block_pattern = r"```json\s*(.*?)\s*```"
+        matches = re.findall(json_block_pattern, text, re.DOTALL | re.IGNORECASE)
+        if matches:
+            logger.debug(f"Found {len(matches)} ```json...``` blocks")
+            for i, match in enumerate(matches):
+                try:
+                    # 파싱 검증
+                    json.loads(match)
+                    logger.info(f"Successfully extracted JSON from ```json``` block #{i+1}")
+                    return match.strip()
+                except json.JSONDecodeError as e:
+                    logger.warning(f"JSON block #{i+1} parse failed: {e}")
+                    continue
+
+        # 2. ``` ... ``` 블록 찾기 (json 키워드 없이)
+        code_block_pattern = r"```\s*(.*?)\s*```"
+        matches = re.findall(code_block_pattern, text, re.DOTALL)
+        if matches:
+            logger.debug(f"Found {len(matches)} ``` ... ``` blocks (no json keyword)")
+            for i, match in enumerate(matches):
+                # { 로 시작하는 경우만 시도
+                if match.strip().startswith("{"):
+                    try:
+                        json.loads(match)
+                        logger.info(f"Successfully extracted JSON from code block #{i+1}")
+                        return match.strip()
+                    except json.JSONDecodeError:
+                        continue
+
+        # 3. 순수 JSON 찾기 (중괄호로 시작)
+        # 첫 번째 { 부터 마지막 } 까지
+        first_brace = text.find("{")
+        last_brace = text.rfind("}")
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            candidate = text[first_brace : last_brace + 1]
+            try:
+                json.loads(candidate)
+                logger.info("Successfully extracted JSON from raw text (first { to last })")
+                return candidate.strip()
+            except json.JSONDecodeError as e:
+                logger.warning(f"Raw JSON extraction failed: {e}")
+
+        # 4. 마지막 시도: 줄 단위로 { 찾아서 끝까지
+        lines = text.split("\n")
+        for i, line in enumerate(lines):
+            if line.strip().startswith("{"):
+                # 이 줄부터 끝까지 합쳐서 시도
+                candidate = "\n".join(lines[i:])
+                # 마지막 } 찾기
+                last_brace_idx = candidate.rfind("}")
+                if last_brace_idx != -1:
+                    candidate = candidate[: last_brace_idx + 1]
+                    try:
+                        json.loads(candidate)
+                        logger.info(f"Successfully extracted JSON starting from line {i+1}")
+                        return candidate.strip()
+                    except json.JSONDecodeError:
+                        continue
+
+        logger.error("Failed to extract valid JSON from text")
+        logger.debug(f"Text preview (first 500 chars): {text[:500]}")
+        return ""
+
+    @staticmethod
+    def remove_json_section(text: str) -> str:
+        """
+        피드백 텍스트에서 JSON 섹션을 제거합니다.
+
+        V2 프롬프트는 리포트 + JSON을 모두 출력하므로,
+        대시보드에서 사람이 읽을 때는 JSON 부분을 제거합니다.
+
+        Args:
+            text: 피드백 전체 텍스트 (리포트 + JSON 포함 가능)
+
+        Returns:
+            JSON 섹션이 제거된 텍스트 (리포트만)
+        """
+        import re
+
+        # 패턴 1: JSON SUMMARY 섹션 제거
+        # 다양한 형식 지원: "OUTPUT — B)", ":B)", "B) JSON", "## JSON" 등
+        patterns = [
+            r"OUTPUT\s*[—-]\s*B\).*?$",  # "OUTPUT — B) JSON SUMMARY" 이후 모두 제거
+            r"----+\s*OUTPUT\s*[—-]\s*B\).*?$",  # "---- OUTPUT — B)" 이후 모두 제거
+            r"---+\s*##\s*JSON Summary.*?$",  # "--- ## JSON Summary" 이후 모두 제거
+            r":?B\)\s*JSON\s*SUMMARY.*?$",  # ":B) JSON SUMMARY" 또는 "B) JSON SUMMARY" 이후 모두 제거
+            r"##\s*JSON\s*SUMMARY.*?$",  # "## JSON SUMMARY" 이후 모두 제거
+            r"----+\s*$",  # "----" 이후 모두 제거 (JSON이 구분선 뒤에 오는 경우)
+        ]
+
+        result = text
+        for pattern in patterns:
+            result = re.sub(pattern, "", result, flags=re.DOTALL | re.IGNORECASE)
+
+        # 패턴 2: ```json ... ``` 블록 제거
+        result = re.sub(r"```json\s*.*?\s*```", "", result, flags=re.DOTALL | re.IGNORECASE)
+
+        # 패턴 3: 단독 { ... } JSON 블록 제거 (마지막 부분에 있는 경우)
+        # 마지막 200자 정도에서 { 로 시작하는 JSON이 있으면 제거
+        lines = result.strip().split("\n")
+        # 끝에서부터 역순으로 확인
+        for i in range(len(lines) - 1, max(0, len(lines) - 50), -1):
+            if lines[i].strip().startswith("{"):
+                # 여기부터 끝까지가 JSON일 가능성
+                potential_json = "\n".join(lines[i:])
+                try:
+                    import json
+                    json.loads(potential_json)
+                    # 유효한 JSON이면 제거
+                    result = "\n".join(lines[:i])
+                    logger.debug(f"Removed trailing JSON block starting at line {i+1}")
+                    break
+                except json.JSONDecodeError:
+                    continue
+
+        return result.strip()

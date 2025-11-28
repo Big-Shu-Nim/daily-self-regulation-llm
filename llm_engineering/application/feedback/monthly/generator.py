@@ -15,7 +15,12 @@ from loguru import logger
 from llm_engineering.settings import Settings
 from ..base import BaseFeedbackGenerator
 from ..document_loader import DocumentLoader
-from .prompts import MONTHLY_FEEDBACK_PROMPT, MONTHLY_SUMMARY_PROMPT
+from .prompts import (
+    MONTHLY_FEEDBACK_PROMPT,
+    MONTHLY_FEEDBACK_PROMPT_PUBLIC,
+    MONTHLY_SUMMARY_PROMPT,
+    MONTHLY_SUMMARY_PROMPT_PUBLIC,
+)
 
 # Load settings singleton
 settings = Settings.load_settings()
@@ -35,6 +40,7 @@ class MonthlyFeedbackGenerator(BaseFeedbackGenerator):
         self,
         model_id: Optional[str] = None,
         temperature: float = 0.7,
+        prompt_style: str = "original",
     ):
         """
         Initialize the monthly feedback generator.
@@ -42,12 +48,20 @@ class MonthlyFeedbackGenerator(BaseFeedbackGenerator):
         Args:
             model_id: LLM model ID
             temperature: LLM temperature
+            prompt_style: 프롬프트 스타일 ("original", "public")
         """
         super().__init__(model_id, temperature)
-        self.summary_prompt = MONTHLY_SUMMARY_PROMPT
-        self.feedback_prompt = MONTHLY_FEEDBACK_PROMPT
+        self.prompt_style = prompt_style
 
-        logger.info("MonthlyFeedbackGenerator initialized")
+        # Select prompts based on style
+        if prompt_style == "public":
+            self.summary_prompt = MONTHLY_SUMMARY_PROMPT_PUBLIC
+            self.feedback_prompt = MONTHLY_FEEDBACK_PROMPT_PUBLIC
+        else:
+            self.summary_prompt = MONTHLY_SUMMARY_PROMPT
+            self.feedback_prompt = MONTHLY_FEEDBACK_PROMPT
+
+        logger.info(f"MonthlyFeedbackGenerator initialized (style={prompt_style})")
 
     def generate(
         self,
@@ -68,6 +82,8 @@ class MonthlyFeedbackGenerator(BaseFeedbackGenerator):
         Returns:
             생성된 월간 피드백 문자열
         """
+        import asyncio
+
         logger.info(f"Generating monthly feedback for {year}-{month:02d}")
 
         # 1. 월의 시작일과 종료일 계산
@@ -76,16 +92,10 @@ class MonthlyFeedbackGenerator(BaseFeedbackGenerator):
         # 2. 주별로 데이터 분할
         weeks = self._split_into_weeks(start_date, end_date)
 
-        # 3. 각 주별 요약 생성 (1단계)
-        weekly_summaries = []
-        for week_num, (week_start, week_end) in enumerate(weeks, 1):
-            summary = self._generate_weekly_summary(
-                week_num=week_num,
-                week_start=week_start,
-                week_end=week_end,
-                author_full_name=author_full_name,
-            )
-            weekly_summaries.append(summary)
+        # 3. 각 주별 요약 생성 (병렬 처리)
+        weekly_summaries = asyncio.run(
+            self._generate_weekly_summaries_async(weeks, author_full_name)
+        )
 
         # 4. 주간 요약들을 종합하여 월간 피드백 생성 (2단계)
         monthly_feedback = self._generate_monthly_feedback(
@@ -99,6 +109,99 @@ class MonthlyFeedbackGenerator(BaseFeedbackGenerator):
             f"Monthly feedback generated successfully ({len(monthly_feedback)} chars)"
         )
         return monthly_feedback
+
+    async def _generate_weekly_summaries_async(
+        self,
+        weeks: list[tuple[str, str]],
+        author_full_name: Optional[str],
+    ) -> list[str]:
+        """
+        주간 요약들을 비동기로 병렬 생성합니다.
+
+        Args:
+            weeks: [(week_start, week_end), ...] 리스트
+            author_full_name: 작성자 이름
+
+        Returns:
+            주간 요약 리스트
+        """
+        import asyncio
+
+        tasks = [
+            self._generate_weekly_summary_async(
+                week_num=week_num,
+                week_start=week_start,
+                week_end=week_end,
+                author_full_name=author_full_name,
+            )
+            for week_num, (week_start, week_end) in enumerate(weeks, 1)
+        ]
+
+        logger.info(f"Starting parallel generation of {len(tasks)} weekly summaries")
+        summaries = await asyncio.gather(*tasks)
+        logger.info(f"Completed parallel generation of {len(summaries)} weekly summaries")
+
+        return summaries
+
+    async def _generate_weekly_summary_async(
+        self,
+        week_num: int,
+        week_start: str,
+        week_end: str,
+        author_full_name: Optional[str],
+    ) -> str:
+        """
+        특정 주의 데이터를 비동기로 요약합니다.
+
+        Args:
+            week_num: 주 번호 (1, 2, 3, ...)
+            week_start: 주 시작 날짜
+            week_end: 주 종료 날짜
+            author_full_name: 작성자 이름
+
+        Returns:
+            주간 요약 문자열
+        """
+        logger.info(f"Generating summary for Week {week_num}: {week_start} ~ {week_end}")
+
+        # 주간 데이터 로드
+        weekly_docs = DocumentLoader.load_by_date_range(
+            start_date=week_start,
+            end_date=week_end,
+            sources=["calendar", "notion", "naver_blog"],
+            author_full_name=author_full_name,
+            include_weekly_reports=False,
+        )
+
+        # 컨텍스트 포맷팅
+        context = self._format_week_data(week_num, week_start, week_end, weekly_docs)
+
+        # LLM 호출 (비동기)
+        prompt = ChatPromptTemplate.from_messages(
+            [("system", self.summary_prompt), ("human", "{context}")]
+        )
+
+        chain = prompt | self.llm
+
+        try:
+            # LangSmith 추적 활성화
+            if settings.LANGCHAIN_TRACING_V2 and settings.LANGCHAIN_API_KEY:
+                import os
+                os.environ["LANGCHAIN_TRACING_V2"] = "true"
+                os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+                os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+                os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT
+
+            response = await chain.ainvoke({"context": context})
+            summary = response.content
+
+            logger.debug(f"Week {week_num} summary generated ({len(summary)} chars)")
+            return summary
+
+        except Exception as e:
+            logger.error(f"Error generating week {week_num} summary: {e}")
+            # 실패 시 기본 요약 반환
+            return f"### Week {week_num}: {week_start} ~ {week_end}\n\n데이터 요약 실패.\n\n---\n"
 
     def _get_month_range(self, year: int, month: int) -> tuple[str, str]:
         """

@@ -200,3 +200,4 @@ privacy_filter_config.json
 credentials.json
 token.json
 
+tools/check_models_raw.py
