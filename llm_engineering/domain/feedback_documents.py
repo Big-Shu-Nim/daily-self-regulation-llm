@@ -130,6 +130,61 @@ class PublicDailyFeedbackDocument(FeedbackDocument):
         ]
 
 
+class PublicWeeklyFeedbackDocument(FeedbackDocument):
+    """
+    공개용 주간 피드백 문서.
+
+    개인정보 보호된 공개용 주간 피드백을 별도 컬렉션에 저장합니다.
+    - 프롬프트 스타일: "v2_public" 고정
+    - 사전 계산 메트릭 기반
+    - 개인용 피드백과 분리된 컬렉션
+    """
+
+    feedback_type: str = "weekly"
+
+    # 주간 피드백 전용 필드
+    end_date: str  # YYYY-MM-DD (주 종료일)
+    prompt_style: str = "v2_public"  # 공개용은 v2_public만 사용
+
+    # 사전 계산된 메트릭 (선택적)
+    precomputed_metrics: Optional[dict] = None
+
+    class Settings:
+        name = "public_weekly_feedback"  # 별도 컬렉션
+        indexes = [
+            [("target_date", 1), ("end_date", 1)],  # 주 시작일/종료일 검색용
+            [("generated_at", -1)],  # 최신순 정렬용
+        ]
+
+
+class PublicMonthlyFeedbackDocument(FeedbackDocument):
+    """
+    공개용 월간 피드백 문서.
+
+    개인정보 보호된 공개용 월간 피드백을 별도 컬렉션에 저장합니다.
+    - 프롬프트 스타일: "v2_public" 고정
+    - 주간 V2 Public 리포트 기반 계층적 요약
+    - 개인용 피드백과 분리된 컬렉션
+    """
+
+    feedback_type: str = "monthly"
+
+    # 월간 피드백 전용 필드
+    year: int
+    month: int
+    prompt_style: str = "v2_public"  # 공개용은 v2_public만 사용
+
+    # 주별 V2 Public 리포트 (계층적 요약의 중간 단계)
+    weekly_v2_reports: Optional[list[str]] = None
+
+    class Settings:
+        name = "public_monthly_feedback"  # 별도 컬렉션
+        indexes = [
+            [("year", 1), ("month", 1)],  # 년월 검색용
+            [("generated_at", -1)],  # 최신순 정렬용
+        ]
+
+
 class MonthlyFeedbackDocument(FeedbackDocument):
     """
     월간 피드백 문서.
