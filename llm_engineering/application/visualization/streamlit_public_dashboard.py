@@ -152,7 +152,7 @@ def get_weekday_korean(date_str: str) -> str:
 
 # 공개용 대시보드 날짜 범위 제한 (샘플 기간)
 PUBLIC_START_DATE = datetime(2025, 11, 3).date()
-PUBLIC_END_DATE = datetime(2025, 11, 27).date()
+PUBLIC_END_DATE = datetime(2025, 11, 30).date()
 
 
 # 페이지 설정
@@ -445,32 +445,14 @@ def show_llm_feedback(date_str: str):
     """공개용 일일 피드백 영역 (GPT-5, public 프롬프트 고정)"""
     st.caption("🤖 Powered by GPT-5 | 개인정보 보호를 위해 일반화된 분석을 제공합니다.")
 
-    # 피드백 생성/로드 버튼
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        load_button = st.button("📥 피드백 불러오기", type="primary", use_container_width=True)
-
-    with col2:
-        regenerate_button = st.button("🔄 새로 생성", use_container_width=True)
+    # 피드백 로드 버튼
+    load_button = st.button("📥 피드백 불러오기", type="primary", use_container_width=True)
 
     st.markdown("---")
 
     # 피드백 표시 영역
-    if load_button or regenerate_button:
-        with st.spinner("피드백 로딩 중..." if load_button else "피드백 생성 중..."):
-            if regenerate_button:
-                # 강제 재생성: 기존 공개용 피드백 삭제 후 생성
-                try:
-                    existing = PublicDailyFeedbackDocument.find(
-                        target_date=date_str
-                    )
-                    if existing:
-                        # MongoDB에서 삭제하는 메서드가 있다면 사용
-                        pass  # 일단 덮어쓰기로 처리
-                except:
-                    pass
-
+    if load_button:
+        with st.spinner("피드백 로딩 중..."):
             feedback, is_new = load_or_generate_feedback(date_str)
 
             if is_new:
@@ -1023,9 +1005,17 @@ def main():
         """)
 
         st.info("""
-        **🤖 LLM 모델**
+        **📖 사용 방법**
 
-        GPT-5 (OpenAI 최신 모델)
+        1️⃣ **탭 선택**: 📅 일일 / 📈 주간 / 📊 월간 중 원하는 탭을 클릭하세요
+
+        2️⃣ **날짜 선택**: 분석하고 싶은 날짜/주/월을 선택하세요
+
+        3️⃣ **데이터 로드**: 📥 데이터 로드 버튼을 눌러 시각화를 확인하세요
+
+        4️⃣ **피드백 확인**: 오른쪽의 📥 피드백 불러오기 버튼을 눌러 AI 분석을 확인하세요
+
+        💡 왼쪽 시각화와 오른쪽 AI 피드백을 함께 보면 더욱 효과적입니다!
         """)
 
     # ========================================================================
@@ -1076,7 +1066,7 @@ def main():
 
             st.markdown("---")
 
-            # 2. Agency 파이차트
+            # 2. Agency 파이차트ㄷ
             show_agency_pie_chart(df)
 
             st.markdown("---")
@@ -1106,24 +1096,52 @@ def main():
     with tab_weekly:
         st.header("📈 주간 활동 리포트")
         st.markdown("---")
-        # 날짜 선택
-        col_start, col_end, col_btn = st.columns([2, 2, 1])
-        with col_start:
-            start_date = st.date_input(
-                "시작일",
-                value=PUBLIC_START_DATE,
-                min_value=PUBLIC_START_DATE,
-                max_value=PUBLIC_END_DATE,
-                key="weekly_start"
+
+        # 샘플 데이터 기간 내의 모든 월요일 찾기
+        def get_all_mondays(start_date: datetime.date, end_date: datetime.date) -> list[datetime.date]:
+            """기간 내의 모든 월요일을 찾습니다."""
+            mondays = []
+            current = start_date
+            # 첫 번째 월요일 찾기
+            while current.weekday() != 0:  # 0 = 월요일
+                current += timedelta(days=1)
+                if current > end_date:
+                    return mondays
+
+            # 모든 월요일 수집
+            while current <= end_date:
+                mondays.append(current)
+                current += timedelta(days=7)
+
+            return mondays
+
+        mondays = get_all_mondays(PUBLIC_START_DATE, PUBLIC_END_DATE)
+
+        if not mondays:
+            st.error("샘플 데이터 기간 내에 월요일이 없습니다.")
+            return
+
+        # 주 선택 UI
+        col_select, col_btn = st.columns([3, 1])
+        with col_select:
+            # 주 옵션 생성 (월요일 ~ 일요일)
+            week_options = []
+            for monday in mondays:
+                sunday = min(monday + timedelta(days=6), PUBLIC_END_DATE)
+                week_label = f"{monday.strftime('%Y-%m-%d')} (월) ~ {sunday.strftime('%Y-%m-%d')} ({get_weekday_korean(sunday.strftime('%Y-%m-%d'))})"
+                week_options.append((week_label, monday, sunday))
+
+            # 기본값: 마지막 주
+            selected_week = st.selectbox(
+                "주 선택",
+                options=range(len(week_options)),
+                format_func=lambda i: week_options[i][0],
+                index=len(week_options) - 1,  # 마지막 주 선택
+                key="weekly_select"
             )
-        with col_end:
-            end_date = st.date_input(
-                "종료일",
-                value=min(start_date + timedelta(days=6), PUBLIC_END_DATE),
-                min_value=start_date,
-                max_value=PUBLIC_END_DATE,
-                key="weekly_end"
-            )
+
+            _, start_date, end_date = week_options[selected_week]
+
         with col_btn:
             st.write("")  # 간격 조정
             if st.button("📥 로드", type="primary", key="weekly_load", use_container_width=True):
@@ -1212,32 +1230,14 @@ def main():
             st.header("🌐 공개용 LLM 피드백")
             st.caption("🤖 Powered by GPT-5 | V2 Public | 개인정보 보호를 위해 일반화된 분석을 제공합니다.")
 
-            # 피드백 생성/로드 버튼
-            col1, col2 = st.columns([1, 1])
-
-            with col1:
-                load_button = st.button("📥 피드백 불러오기", type="primary", use_container_width=True, key="weekly_load_btn")
-
-            with col2:
-                regenerate_button = st.button("🔄 새로 생성", use_container_width=True, key="weekly_regenerate_btn")
+            # 피드백 로드 버튼
+            load_button = st.button("📥 피드백 불러오기", type="primary", use_container_width=True, key="weekly_load_btn")
 
             st.markdown("---")
 
             # 피드백 표시 영역
-            if load_button or regenerate_button:
-                with st.spinner("피드백 로딩 중..." if load_button else "피드백 생성 중..."):
-                    if regenerate_button:
-                        # 강제 재생성: 기존 공개용 피드백 삭제 후 생성
-                        try:
-                            existing = PublicWeeklyFeedbackDocument.find(
-                                target_date=start_date_str,
-                                end_date=end_date_str
-                            )
-                            if existing:
-                                pass  # 일단 덮어쓰기로 처리
-                        except:
-                            pass
-
+            if load_button:
+                with st.spinner("피드백 로딩 중..."):
                     feedback, is_new, metrics = load_or_generate_weekly_feedback(
                         start_date_str, end_date_str, df
                     )
@@ -1424,32 +1424,14 @@ def main():
             st.header("🌐 공개용 LLM 피드백")
             st.caption("🤖 Powered by GPT-5 | V2 Public | 개인정보 보호를 위해 일반화된 분석을 제공합니다.")
 
-            # 피드백 생성/로드 버튼
-            col1, col2 = st.columns([1, 1])
-
-            with col1:
-                load_button = st.button("📥 피드백 불러오기", type="primary", use_container_width=True, key="monthly_load_btn")
-
-            with col2:
-                regenerate_button = st.button("🔄 새로 생성", use_container_width=True, key="monthly_regenerate_btn")
+            # 피드백 로드 버튼
+            load_button = st.button("📥 피드백 불러오기", type="primary", use_container_width=True, key="monthly_load_btn")
 
             st.markdown("---")
 
             # 피드백 표시 영역
-            if load_button or regenerate_button:
-                with st.spinner("피드백 로딩 중..." if load_button else "피드백 생성 중 (주간 리포트 병렬 생성 후 월간 요약)..."):
-                    if regenerate_button:
-                        # 강제 재생성: 기존 공개용 피드백 삭제 후 생성
-                        try:
-                            existing = PublicMonthlyFeedbackDocument.find(
-                                year=year,
-                                month=month
-                            )
-                            if existing:
-                                pass  # 일단 덮어쓰기로 처리
-                        except:
-                            pass
-
+            if load_button:
+                with st.spinner("피드백 로딩 중..."):
                     feedback, is_new = load_or_generate_monthly_feedback(
                         year, month, df
                     )
