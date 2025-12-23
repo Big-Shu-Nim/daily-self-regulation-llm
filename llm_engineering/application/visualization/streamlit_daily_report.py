@@ -32,6 +32,96 @@ from llm_engineering.application.visualization.daily_report_interactive import (
     plot_maintenance_by_event_interactive,
     plot_relationship_by_agency_interactive,
 )
+from llm_engineering.application.visualization.privacy_utils import remove_duplicate_events
+
+
+# Tooltip 스타일 정의
+TOOLTIP_CSS = """
+<style>
+.chart-title-tooltip {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.chart-title-tooltip .tooltiptext {
+    visibility: hidden;
+    width: 300px;
+    background-color: #262730;
+    color: #fafafa;
+    text-align: left;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #464646;
+
+    position: absolute;
+    z-index: 1000;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -150px;
+
+    opacity: 0;
+    transition: opacity 0.3s;
+
+    font-size: 0.875rem;
+    font-weight: normal;
+}
+
+.chart-title-tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.chart-title-tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #464646 transparent transparent transparent;
+}
+</style>
+"""
+
+
+def show_section_title_with_tooltip(title: str, tooltip: str):
+    """
+    호버 시 툴팁이 나타나는 섹션 제목 표시
+
+    Args:
+        title: 섹션 제목
+        tooltip: 호버 시 나타날 툴팁 텍스트
+    """
+    st.markdown(TOOLTIP_CSS, unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="chart-title-tooltip">
+        {title}
+        <span class="tooltiptext">{tooltip}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def get_weekday_korean(date_str: str) -> str:
+    """
+    날짜 문자열에서 한글 요일을 반환합니다.
+
+    Args:
+        date_str: YYYY-MM-DD 형식의 날짜 문자열
+
+    Returns:
+        한글 요일 (월, 화, 수, 목, 금, 토, 일)
+    """
+    weekday_map = {
+        0: '월', 1: '화', 2: '수', 3: '목',
+        4: '금', 5: '토', 6: '일'
+    }
+    date_obj = pd.to_datetime(date_str)
+    return weekday_map[date_obj.weekday()]
 
 
 # 페이지 설정
@@ -75,6 +165,10 @@ def load_daily_data(date_str: str) -> pd.DataFrame:
 
         df = pd.DataFrame(data)
         df = df.sort_values('start_datetime').reset_index(drop=True)
+
+        # 중복 이벤트 제거
+        df = remove_duplicate_events(df)
+
         return df
     except Exception as e:
         st.error(f"데이터 로드 중 오류 발생: {str(e)}")
@@ -83,7 +177,8 @@ def load_daily_data(date_str: str) -> pd.DataFrame:
 
 def show_statistics(df: pd.DataFrame, target_date: str):
     """전체 통계 표시"""
-    st.subheader(f"📊 {target_date} 전체 통계")
+    weekday = get_weekday_korean(target_date)
+    st.subheader(f"{target_date} ({weekday}) 전체 통계")
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -102,10 +197,12 @@ def show_statistics(df: pd.DataFrame, target_date: str):
 
 def show_agency_pie_chart(df: pd.DataFrame):
     """Agency 파이차트 표시 (Interactive)"""
-    st.subheader("🎯 Agency 파이차트")
-    st.caption("💡 Tip: 호버하면 실제 영역별 합계 시간을 확인할 수 있습니다!")
+    show_section_title_with_tooltip(
+        "🎯 Agency 파이차트",
+        "💡 Tip: 호버하면 실제 영역별 합계 시간을 확인할 수 있습니다!"
+    )
 
-    fig = plot_agency_pie_chart_interactive(df)
+    fig = plot_agency_pie_chart_interactive(df, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -114,10 +211,12 @@ def show_agency_pie_chart(df: pd.DataFrame):
 
 def show_category_distribution(df: pd.DataFrame):
     """카테고리별 시간 분포 표시 (Interactive)"""
-    st.subheader("📈 카테고리별 시간 분포")
-    st.caption("💡 Tip: 바를 호버하면 하루 기준 퍼센티지를 확인할 수 있습니다!")
+    show_section_title_with_tooltip(
+        "📈 카테고리별 시간 분포",
+        "💡 Tip: 바를 호버하면 하루 기준 퍼센티지를 확인할 수 있습니다!"
+    )
 
-    fig = plot_category_distribution_interactive(df)
+    fig = plot_category_distribution_interactive(df, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -126,10 +225,12 @@ def show_category_distribution(df: pd.DataFrame):
 
 def show_sleep_breakdown(df: pd.DataFrame):
     """수면 상세 분석 표시 (Interactive)"""
-    st.subheader("😴 수면 상세 분석")
-    st.caption("💡 Tip: 바를 호버하면 각 수면 이벤트의 메모를 확인할 수 있습니다!")
+    show_section_title_with_tooltip(
+        "😴 수면 상세 분석",
+        "💡 Tip: 바를 호버하면 각 수면 이벤트의 메모를 확인할 수 있습니다!"
+    )
 
-    fig = plot_sleep_breakdown_interactive(df)
+    fig = plot_sleep_breakdown_interactive(df, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -138,12 +239,14 @@ def show_sleep_breakdown(df: pd.DataFrame):
 
 def show_five_areas_analysis(df: pd.DataFrame):
     """5개 영역 상세 분석 (Interactive Plotly)"""
-    st.subheader("🎯 5개 영역 상세 분석")
-    st.caption("💡 Tip: 바를 호버하면 메모와 상세 정보를 확인할 수 있습니다!")
+    show_section_title_with_tooltip(
+        "🎯 5개 영역 상세 분석",
+        "💡 Tip: 바를 호버하면 메모와 상세 정보를 확인할 수 있습니다!"
+    )
 
     # 1. 일/생산
     st.markdown("### 💼 일/생산 - 이벤트별 집중 시간")
-    fig = plot_work_by_event_interactive(df)
+    fig = plot_work_by_event_interactive(df, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -153,7 +256,7 @@ def show_five_areas_analysis(df: pd.DataFrame):
 
     # 2. 학습/성장
     st.markdown("### 📚 학습/성장 - 이벤트별 집중 시간")
-    fig = plot_learning_by_event_interactive(df)
+    fig = plot_learning_by_event_interactive(df, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -164,7 +267,7 @@ def show_five_areas_analysis(df: pd.DataFrame):
     # 3. 재충전 활동
     st.markdown("### 🌴 재충전 활동 - 이벤트별")
     st.caption("🟩 기본 재충전 / 🟫 소셜 재충전 (#인간관계)")
-    fig = plot_recharge_by_event_interactive(df, top_n=15)
+    fig = plot_recharge_by_event_interactive(df, top_n=15, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -174,7 +277,7 @@ def show_five_areas_analysis(df: pd.DataFrame):
 
     # 4. Drain
     st.markdown("### ⚠️ Drain - 이벤트별")
-    fig = plot_drain_by_event_interactive(df)
+    fig = plot_drain_by_event_interactive(df, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -184,7 +287,7 @@ def show_five_areas_analysis(df: pd.DataFrame):
 
     # 5. 일상 관리
     st.markdown("### 🏠 일상 관리 - 이벤트별")
-    fig = plot_maintenance_by_event_interactive(df)
+    fig = plot_maintenance_by_event_interactive(df, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -194,7 +297,7 @@ def show_five_areas_analysis(df: pd.DataFrame):
 
     # 6. #인간관계 태그 - Agency별
     st.markdown("### 👥 #인간관계 - Agency별 분포")
-    fig = plot_relationship_by_agency_interactive(df)
+    fig = plot_relationship_by_agency_interactive(df, show_title=False)
     if fig:
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -348,9 +451,7 @@ def main():
         st.markdown("""
         1. 📅 날짜를 선택하세요
         2. 📥 데이터 로드 버튼을 클릭하세요
-        3. 💡 Interactive 차트에서 바를 호버하면 상세 정보를 볼 수 있습니다
-        4. 📊 왼쪽: 시각화 인사이트
-        5. 🤖 오른쪽: 일일 피드백 (개발 중)
+     
         """)
 
     # 데이터 로드
@@ -362,13 +463,14 @@ def main():
         st.info("다른 날짜를 선택해주세요.")
         return
 
-    st.success(f"✅ {date_str} 데이터 로드 완료 (총 {len(df)}개 활동)")
+    weekday = get_weekday_korean(date_str)
+    st.success(f"✅ {date_str} ({weekday}) 데이터 로드 완료 (총 {len(df)}개 활동)")
 
     # 2-Column Layout: 왼쪽(시각화), 오른쪽(LLM 피드백)
     left_col, right_col = st.columns([2, 1])
 
     with left_col:
-        st.header("📊 시각화 인사이트")
+
 
         # 1. 전체 통계
         show_statistics(df, date_str)
