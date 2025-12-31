@@ -82,9 +82,13 @@ class WeeklyFeedbackDocument(FeedbackDocument):
 
     # 주간 피드백 전용 필드
     end_date: str  # YYYY-MM-DD (주 종료일)
+    prompt_style: str = "original"  # original, v2, etc.
 
     # 과거 주간 리포트 참조 여부
     included_past_reports: bool = False
+
+    # 사전 계산된 메트릭 (V2 스타일 전용)
+    precomputed_metrics: Optional[dict] = None
 
     # JSON summary (structured output from LLM, if available)
     json_summary: Optional[dict] = None
@@ -197,6 +201,7 @@ class MonthlyFeedbackDocument(FeedbackDocument):
     # 월간 피드백 전용 필드
     year: int
     month: int
+    prompt_style: str = "original"  # original, v2, etc.
 
     # 주별 요약 (계층적 요약의 중간 단계)
     weekly_summaries: Optional[list[str]] = None
